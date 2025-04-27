@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "587348245983",
+    "project_id": "myloginapp-fbed0",
+    "storage_bucket": "myloginapp-fbed0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587348245983:android:95b2dadad53946ed58986a",
+        "android_client_info": {
+          "package_name": "com.example.projectapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjQqGJqmWZHZc1_IryE1IE2NQjcmV4DOo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

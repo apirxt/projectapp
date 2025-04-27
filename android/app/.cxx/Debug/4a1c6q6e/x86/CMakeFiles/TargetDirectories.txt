@@ -1,0 +1,2 @@
+C:/Users/ASUS/Desktop/MyProJect/projectapp/android/app/.cxx/Debug/4a1c6q6e/x86/CMakeFiles/edit_cache.dir
+C:/Users/ASUS/Desktop/MyProJect/projectapp/android/app/.cxx/Debug/4a1c6q6e/x86/CMakeFiles/rebuild_cache.dir
