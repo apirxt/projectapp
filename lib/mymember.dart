@@ -22,6 +22,7 @@ class _mymemberState extends State<mymember> {
   final TextEditingController detailsController = TextEditingController(); // Add a new TextEditingController for additional details
   String vehicleType = '';
   bool _isImagePickerActive = false; // Add a flag to track ImagePicker state
+  String? nameError; // Add a variable to store the error message
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +126,10 @@ class _mymemberState extends State<mymember> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(labelText: 'ตั้งชื่อที่จอดรถ'),
+                  decoration: InputDecoration(
+                    labelText: 'ตั้งชื่อที่จอดรถ',
+                    errorText: nameError, // Display error message if any
+                  ),
                 ),
                 CheckboxListTile(
                   title: const Text('รถยนต์'),
@@ -296,10 +300,10 @@ class _mymemberState extends State<mymember> {
                       .get();
 
                   if (existingDocs.docs.isNotEmpty) {
-                    // Show a warning if the name already exists
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('ชื่อที่จอดรถนี้มีอยู่แล้ว กรุณาตั้งชื่อใหม่')),
-                    );
+                    // Show a warning below the input field
+                    setDialogState(() {
+                      nameError = 'ชื่อที่จอดรถนี้มีอยู่แล้ว กรุณาตั้งชื่อใหม่';
+                    });
                     return;
                   }
 
@@ -335,10 +339,9 @@ class _mymemberState extends State<mymember> {
                     );
                   }
                 } else {
-                  // Show a warning if required fields are empty
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('กรุณากรอกข้อมูลให้ครบถ้วน')),
-                  );
+                  setDialogState(() {
+                    nameError = 'กรุณากรอกข้อมูลให้ครบถ้วน';
+                  });
                 }
               },
               child: const Text('บันทึก'),

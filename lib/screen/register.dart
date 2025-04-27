@@ -6,7 +6,6 @@ import 'package:form_field_validator/form_field_validator.dart';
 import 'package:projectapp/model/profile.dart';
 
 import 'home.dart';
-import 'welcome.dart';
 
 class RegisterScreen extends StatefulWidget {
   @override
@@ -113,20 +112,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                         }));
                                       });
                                     } on FirebaseAuthException catch (e) {
-                                      print(e.code);
-                                      String message;
-                                      if (e.code == 'email-already-in-use') {
-                                        message =
-                                            "มีอีเมลนี้ในระบบแล้วครับ โปรดใช้อีเมลอื่นแทน";
-                                      } else if (e.code == 'weak-password') {
-                                        message =
-                                            "รหัสผ่านต้องมีความยาว 6 ตัวอักษรขึ้นไป";
-                                      } else {
-                                        message = e.message ?? "เกิดข้อผิดพลาด";
-                                      }
-                                      Fluttertoast.showToast(
-                                          msg: message,
-                                          gravity: ToastGravity.CENTER);
+                                      setState(() {
+                                        String message;
+                                        if (e.code == 'email-already-in-use') {
+                                          message = "มีอีเมลนี้ในระบบแล้วครับ โปรดใช้อีเมลอื่นแทน";
+                                        } else if (e.code == 'weak-password') {
+                                          message = "รหัสผ่านต้องมีความยาว 6 ตัวอักษรขึ้นไป";
+                                        } else {
+                                          message = e.message ?? "เกิดข้อผิดพลาด";
+                                        }
+                                        Fluttertoast.showToast(
+                                            msg: message,
+                                            gravity: ToastGravity.CENTER,
+                                            backgroundColor: Colors.red,
+                                            textColor: Colors.white,
+                                            fontSize: 16.0);
+                                      });
                                     }
                                   }
                                 },

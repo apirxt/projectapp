@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:projectapp/screen/home.dart';
-import 'package:projectapp/screen/login.dart';
 
 class mysupport extends StatelessWidget {
   const mysupport({super.key});
