@@ -24,6 +24,7 @@ class _mymemberState extends State<mymember> {
   String vehicleType = '';
   bool _isImagePickerActive = false; // Add a flag to track ImagePicker state
   String? nameError; // Add a variable to store the error message
+  LatLng? selectedLocation; // Add a variable to store the selected location
 
   @override
   Widget build(BuildContext context) {
@@ -239,6 +240,8 @@ class _mymemberState extends State<mymember> {
                                 'service_time': timeController.text,
                                 'details': detailsController.text, // Save additional details
                                 'image_url': imageUrl, // Save the image URL
+                                'location': selectedLocation != null ? 
+                                  GeoPoint(selectedLocation!.latitude, selectedLocation!.longitude) : null,
                                 'timestamp': FieldValue.serverTimestamp(),
                               });
 
@@ -253,6 +256,7 @@ class _mymemberState extends State<mymember> {
                               timeController.clear();
                               detailsController.clear(); // Clear the additional details controller
                               vehicleType = '';
+                              selectedLocation = null; // Clear the selected location
                             } catch (e) {
                               // Show an error message if something goes wrong
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -272,13 +276,17 @@ class _mymemberState extends State<mymember> {
                   child: const Text('เพิ่มรูปภาพ'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    final LatLng? result = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => MapScreen(),
                       ),
                     );
+                    if (result != null) {
+                      selectedLocation = result;
+                      setDialogState(() {}); // Refresh dialog state
+                    }
                   },
                   child: const Text('เลือกปักหมุดสถานที่'),
                 ),
@@ -324,6 +332,8 @@ class _mymemberState extends State<mymember> {
                       'service_date': dateController.text,
                       'service_time': timeController.text,
                       'details': detailsController.text, // Save additional details
+                      'location': selectedLocation != null ? 
+                        GeoPoint(selectedLocation!.latitude, selectedLocation!.longitude) : null,
                       'timestamp': FieldValue.serverTimestamp(),
                     });
 
@@ -338,6 +348,7 @@ class _mymemberState extends State<mymember> {
                     timeController.clear();
                     detailsController.clear(); // Clear the additional details controller
                     vehicleType = '';
+                    selectedLocation = null; // Clear the selected location
                   } catch (e) {
                     // Show an error message if something goes wrong
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -366,51 +377,83 @@ class ParkingDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final GeoPoint? location = data['location'] as GeoPoint?;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(data['name'] ?? 'รายละเอียดที่จอดรถ'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (data['image_url'] != null && data['image_url'].isNotEmpty)
-              Center(
-                child: Image.network(
-                  data['image_url'],
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (data['image_url'] != null && data['image_url'].isNotEmpty)
+                Center(
+                  child: Image.network(
+                    data['image_url'],
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
                 ),
+              const SizedBox(height: 10),
+              Text(
+                'ที่จอดรถ: ${data['name'] ?? 'ไม่มีชื่อ'}',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-            const SizedBox(height: 10),
-            Text(
-              'ที่จอดรถ: ${data['name'] ?? 'ไม่มีชื่อ'}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
-            Text('ประเภท: ${data['type'] ?? 'ไม่มีข้อมูล'}\n'),
-            const SizedBox(height: 5),
-            Text('จำนวนรถยนต์: ${data['car_count'] ?? 0}'),
-            const SizedBox(height: 5),
-            Text('ราคาที่จอดรถยนต์: ${data['car_price'] ?? 0} บาท/ชั่วโมง\n'),
-            const SizedBox(height: 5),
-            Text('จำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}'),
-            const SizedBox(height: 5),
-            Text('ราคาที่จอดมอเตอร์ไซค์: ${data['bike_price'] ?? 0} บาท/ชั่วโมง\n'),
-            const SizedBox(height: 5),
-            Text('วันที่เปิดให้บริการ: ${data['service_date'] ?? 'ไม่มีข้อมูล'}'),
-            const SizedBox(height: 5),
-            Text('เวลาที่เปิดให้บริการ: ${data['service_time'] ?? 'ไม่มีข้อมูล'}'),
-            const SizedBox(height: 20),
-            Text(
-              'รายละเอียดเพิ่มเติม:',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
-            Text('${data['details'] ?? 'ไม่มีข้อมูล'}'),
-          ],
+              const SizedBox(height: 5),
+              Text('ประเภท: ${data['type'] ?? 'ไม่มีข้อมูล'}\n'),
+              const SizedBox(height: 5),
+              Text('จำนวนรถยนต์: ${data['car_count'] ?? 0}'),
+              const SizedBox(height: 5),
+              Text('ราคาที่จอดรถยนต์: ${data['car_price'] ?? 0} บาท/ชั่วโมง\n'),
+              const SizedBox(height: 5),
+              Text('จำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}'),
+              const SizedBox(height: 5),
+              Text('ราคาที่จอดมอเตอร์ไซค์: ${data['bike_price'] ?? 0} บาท/ชั่วโมง\n'),
+              const SizedBox(height: 5),
+              Text('วันที่เปิดให้บริการ: ${data['service_date'] ?? 'ไม่มีข้อมูล'}'),
+              const SizedBox(height: 5),
+              Text('เวลาที่เปิดให้บริการ: ${data['service_time'] ?? 'ไม่มีข้อมูล'}'),
+              const SizedBox(height: 20),
+              if (location != null) ...[
+                const Text(
+                  'ตำแหน่งที่จอดรถ:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  height: 200,
+                  child: GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(location.latitude, location.longitude),
+                      zoom: 15,
+                    ),
+                    markers: {
+                      Marker(
+                        markerId: const MarkerId('parking_location'),
+                        position: LatLng(location.latitude, location.longitude),
+                        infoWindow: InfoWindow(title: data['name'] ?? 'ที่จอดรถ'),
+                      ),
+                    },
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: true,
+                    zoomControlsEnabled: true,
+                    mapType: MapType.normal,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Text(
+                'รายละเอียดเพิ่มเติม:',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 5),
+              Text('${data['details'] ?? 'ไม่มีข้อมูล'}'),
+            ],
+          ),
         ),
       ),
     );
@@ -425,17 +468,33 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   late GoogleMapController _controller;
   TextEditingController _searchController = TextEditingController();
+  Set<Marker> _markers = {};
+  LatLng? _selectedLocation;
   
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(13.7563, 100.5018), // Bangkok coordinates
     zoom: 11,
   );
 
+  void _addMarker(LatLng position) {
+    setState(() {
+      _markers.clear(); // Remove existing markers
+      _selectedLocation = position;
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('selected_location'),
+          position: position,
+          infoWindow: const InfoWindow(title: 'ตำแหน่งที่เลือก'),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('เลือกตำแหน่งที่จอดรถ'),
+        title: const Text('เลือกตำแหน่งที่จอดรถ'),
       ),
       body: Column(
         children: [
@@ -446,12 +505,12 @@ class _MapScreenState extends State<MapScreen> {
               decoration: InputDecoration(
                 hintText: 'ค้นหาสถานที่...',
                 suffixIcon: IconButton(
-                  icon: Icon(Icons.search),
+                  icon: const Icon(Icons.search),
                   onPressed: () {
                     // Implement search functionality
                   },
                 ),
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ),
@@ -465,8 +524,30 @@ class _MapScreenState extends State<MapScreen> {
               myLocationButtonEnabled: true,
               zoomControlsEnabled: true,
               mapType: MapType.normal,
+              markers: _markers,
+              onTap: _addMarker,
             ),
           ),
+          if (_selectedLocation != null)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Text(
+                    'ละติจูด: ${_selectedLocation!.latitude.toStringAsFixed(6)}\nลองจิจูด: ${_selectedLocation!.longitude.toStringAsFixed(6)}',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Return the selected location to the previous screen
+                      Navigator.pop(context, _selectedLocation);
+                    },
+                    child: const Text('ยืนยันตำแหน่ง'),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
