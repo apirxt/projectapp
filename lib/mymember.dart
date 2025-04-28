@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:io';
 
 class mymember extends StatefulWidget {
@@ -272,7 +273,12 @@ class _mymemberState extends State<mymember> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    // TODO: ปักหมุดสถานที่
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MapScreen(),
+                      ),
+                    );
                   },
                   child: const Text('เลือกปักหมุดสถานที่'),
                 ),
@@ -406,6 +412,62 @@ class ParkingDetailScreen extends StatelessWidget {
             Text('${data['details'] ?? 'ไม่มีข้อมูล'}'),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class MapScreen extends StatefulWidget {
+  @override
+  State<MapScreen> createState() => _MapScreenState();
+}
+
+class _MapScreenState extends State<MapScreen> {
+  late GoogleMapController _controller;
+  TextEditingController _searchController = TextEditingController();
+  
+  static const CameraPosition _initialPosition = CameraPosition(
+    target: LatLng(13.7563, 100.5018), // Bangkok coordinates
+    zoom: 11,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('เลือกตำแหน่งที่จอดรถ'),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'ค้นหาสถานที่...',
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.search),
+                  onPressed: () {
+                    // Implement search functionality
+                  },
+                ),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GoogleMap(
+              initialCameraPosition: _initialPosition,
+              onMapCreated: (GoogleMapController controller) {
+                _controller = controller;
+              },
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: true,
+              mapType: MapType.normal,
+            ),
+          ),
+        ],
       ),
     );
   }

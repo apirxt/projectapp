@@ -34,6 +34,7 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyAxu8HC9wUG4CogWxdFxXoEcTHyZXbZ3qU" />
     </application>
+    AIzaSyAxu8HC9wUG4CogWxdFxXoEcTHyZXbZ3qU
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
          https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
