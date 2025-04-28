@@ -5,7 +5,10 @@ buildscript {
     }
     dependencies {
         classpath 'com.google.gms:google-services:4.4.2' // ✅ ใช้เวอร์ชันนี้เท่านั้น
-    }
+        classpath "com.google.android.libraries.mapsplatform.secrets-gradle-plugin:secrets-gradle-plugin:2.0.1"    
+        classpath "com.android.tools.build:gradle:8.1.2" // ✅ ใช้เวอร์ชันนี้เท่านั้น
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0" // ✅ ใช้เวอร์ชันนี้เท่านั้น
+        }
 }
 
 allprojects {
