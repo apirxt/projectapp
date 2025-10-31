@@ -104,6 +104,14 @@ class _ParkingDetailState extends State<ParkingDetail> {
                 ),
               ],
               const SizedBox(height: 20),
+              // เพิ่ม "รายละเอียดเพิ่มเติม" ใต้แผนที่ และก่อนส่วนรีวิว
+              const Text(
+                'รายละเอียดเพิ่มเติม:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 5),
+              Text(parkingData['details'] ?? 'ไม่มีข้อมูลเพิ่มเติม'),
+              const SizedBox(height: 20),
               // Rating summary (average and count)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
@@ -209,13 +217,7 @@ class _ParkingDetailState extends State<ParkingDetail> {
                   onPressed: _submitReview,
                 ),
               ),
-
-              const Text(
-                'รายละเอียดเพิ่มเติม:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 5),
-              Text(parkingData['details'] ?? 'ไม่มีข้อมูลเพิ่มเติม'),
+              // เดิมส่วน "รายละเอียดเพิ่มเติม" อยู่ท้ายสุด จึงย้ายขึ้นไปแล้ว
             ],
           ),
         ),
