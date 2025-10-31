@@ -120,7 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                             msg: "เข้าสู่ระบบสำเร็จ",
                                             gravity: ToastGravity.CENTER);
                                         Navigator.pushReplacement(context,
-                                            MaterialPageRoute(builder: (context) {
+                                            MaterialPageRoute(
+                                                builder: (context) {
                                           return MainScreen();
                                         }));
                                       });
@@ -128,17 +129,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                       setState(() {
                                         emailError = null;
                                         passwordError = null;
-                                        if (e.code == 'user-not-found' || e.code == 'invalid-email') {
-                                          emailError = e.code == 'user-not-found' ? "ไม่พบบัญชีผู้ใช้นี้" : "รูปแบบอีเมลไม่ถูกต้อง";
+                                        if (e.code == 'user-not-found' ||
+                                            e.code == 'invalid-email') {
+                                          emailError =
+                                              e.code == 'user-not-found'
+                                                  ? "ไม่พบบัญชีผู้ใช้นี้"
+                                                  : "รูปแบบอีเมลไม่ถูกต้อง";
                                         } else if (e.code == 'wrong-password') {
                                           passwordError = "รหัสผ่านไม่ถูกต้อง";
                                         } else {
                                           emailError = null;
-                                          passwordError = "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+                                          passwordError =
+                                              "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
                                         }
                                       });
                                       Fluttertoast.showToast(
-                                          msg: emailError ?? passwordError ?? "เกิดข้อผิดพลาด",
+                                          msg: emailError ??
+                                              passwordError ??
+                                              "เกิดข้อผิดพลาด",
                                           gravity: ToastGravity.CENTER);
                                     }
                                   }
