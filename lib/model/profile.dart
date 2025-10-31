@@ -1,6 +1,7 @@
 class Profile {
+  String? displayName;
   String? email;
   String? password;
 
-  Profile({this.email, this.password});
+  Profile({this.displayName, this.email, this.password});
 }
