@@ -8,8 +8,10 @@ import 'package:projectapp/model/profile.dart';
 import 'home.dart';
 
 class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
+
   @override
-  _RegisterScreenState createState() => _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
@@ -33,128 +35,132 @@ class _RegisterScreenState extends State<RegisterScreen> {
             );
           }
           if (snapshot.connectionState == ConnectionState.done) {
-            return WillPopScope(
-              onWillPop: () async {
+            return PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => HomeScreen()),
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
                   (Route<dynamic> route) => false,
                 );
-                return false;
               },
               child: Scaffold(
                 appBar: AppBar(
-                  title: Text("สร้างบัญชีผู้ใช้"),
+                  title: const Text("สร้างบัญชีผู้ใช้"),
                   leading: IconButton(
-                    icon: Icon(Icons.arrow_back),
+                    icon: const Icon(Icons.arrow_back),
                     onPressed: () {
                       Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => HomeScreen()),
+                        MaterialPageRoute(
+                            builder: (context) => const HomeScreen()),
                         (Route<dynamic> route) => false,
                       );
                     },
                   ),
                 ),
-                body: Container(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Form(
-                      key: formKey,
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("ชื่อผู้ใช้", style: TextStyle(fontSize: 20)),
-                            TextFormField(
-                              validator: RequiredValidator(
-                                  errorText: "กรุณาป้อนชื่อผู้ใช้ด้วยครับ"),
-                              textInputAction: TextInputAction.next,
-                              onSaved: (String? name) {
-                                profile.displayName = name?.trim();
-                              },
-                            ),
-                            SizedBox(height: 15),
-                            Text("อีเมล", style: TextStyle(fontSize: 20)),
-                            TextFormField(
-                              validator: MultiValidator([
-                                RequiredValidator(
-                                    errorText: "กรุณาป้อนอีเมลด้วยครับ"),
-                                EmailValidator(
-                                    errorText: "รูปแบบอีเมลไม่ถูกต้อง")
-                              ]),
-                              keyboardType: TextInputType.emailAddress,
-                              onSaved: (String? email) {
-                                profile.email = email!;
-                              },
-                            ),
-                            SizedBox(
-                              height: 15,
-                            ),
-                            Text("รหัสผ่าน", style: TextStyle(fontSize: 20)),
-                            TextFormField(
-                              validator: RequiredValidator(
-                                  errorText: "กรุณาป้อนรหัสผ่านด้วยครับ"),
-                              obscureText: true,
-                              onSaved: (String? password) {
-                                profile.password = password!;
-                              },
-                            ),
-                            const SizedBox(height: 50),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                child: Text("ลงทะเบียน",
-                                    style: TextStyle(fontSize: 20)),
-                                onPressed: () async {
-                                  if (formKey.currentState!.validate()) {
-                                    formKey.currentState!.save();
-                                    try {
-                                      final cred = await FirebaseAuth.instance
-                                          .createUserWithEmailAndPassword(
-                                              email: profile.email!,
-                                              password: profile.password!);
-                                      // ตั้งชื่อผู้ใช้ไปที่โปรไฟล์ Auth
-                                      if (profile.displayName != null &&
-                                          profile.displayName!.isNotEmpty) {
-                                        await cred.user?.updateDisplayName(
-                                            profile.displayName!.trim());
-                                        await cred.user?.reload();
-                                      }
-
-                                      formKey.currentState!.reset();
-                                      Fluttertoast.showToast(
-                                          msg: "สร้างบัญชีผู้ใช้เรียบร้อยแล้ว",
-                                          gravity: ToastGravity.TOP);
-                                      Navigator.pushReplacement(context,
-                                          MaterialPageRoute(builder: (context) {
-                                        return HomeScreen();
-                                      }));
-                                    } on FirebaseAuthException catch (e) {
-                                      setState(() {
-                                        String message;
-                                        if (e.code == 'email-already-in-use') {
-                                          message =
-                                              "มีอีเมลนี้ในระบบแล้วครับ โปรดใช้อีเมลอื่นแทน";
-                                        } else if (e.code == 'weak-password') {
-                                          message =
-                                              "รหัสผ่านต้องมีความยาว 6 ตัวอักษรขึ้นไป";
-                                        } else {
-                                          message =
-                                              e.message ?? "เกิดข้อผิดพลาด";
-                                        }
-                                        Fluttertoast.showToast(
-                                            msg: message,
-                                            gravity: ToastGravity.CENTER,
-                                            backgroundColor: Colors.red,
-                                            textColor: Colors.white,
-                                            fontSize: 16.0);
-                                      });
+                body: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("ชื่อผู้ใช้",
+                              style: TextStyle(fontSize: 20)),
+                          TextFormField(
+                            validator: RequiredValidator(
+                                    errorText: "กรุณาป้อนชื่อผู้ใช้ด้วยครับ")
+                                .call,
+                            textInputAction: TextInputAction.next,
+                            onSaved: (String? name) {
+                              profile.displayName = name?.trim();
+                            },
+                          ),
+                          const SizedBox(height: 15),
+                          const Text("อีเมล", style: TextStyle(fontSize: 20)),
+                          TextFormField(
+                            validator: MultiValidator([
+                              RequiredValidator(
+                                  errorText: "กรุณาป้อนอีเมลด้วยครับ"),
+                              EmailValidator(errorText: "รูปแบบอีเมลไม่ถูกต้อง")
+                            ]).call,
+                            keyboardType: TextInputType.emailAddress,
+                            onSaved: (String? email) {
+                              profile.email = email!;
+                            },
+                          ),
+                          const SizedBox(
+                            height: 15,
+                          ),
+                          const Text("รหัสผ่าน",
+                              style: TextStyle(fontSize: 20)),
+                          TextFormField(
+                            validator: RequiredValidator(
+                                    errorText: "กรุณาป้อนรหัสผ่านด้วยครับ")
+                                .call,
+                            obscureText: true,
+                            onSaved: (String? password) {
+                              profile.password = password!;
+                            },
+                          ),
+                          const SizedBox(height: 50),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              child: const Text("ลงทะเบียน",
+                                  style: TextStyle(fontSize: 20)),
+                              onPressed: () async {
+                                if (formKey.currentState!.validate()) {
+                                  formKey.currentState!.save();
+                                  try {
+                                    final cred = await FirebaseAuth.instance
+                                        .createUserWithEmailAndPassword(
+                                            email: profile.email!,
+                                            password: profile.password!);
+                                    // ตั้งชื่อผู้ใช้ไปที่โปรไฟล์ Auth
+                                    if (profile.displayName != null &&
+                                        profile.displayName!.isNotEmpty) {
+                                      await cred.user?.updateDisplayName(
+                                          profile.displayName!.trim());
+                                      await cred.user?.reload();
                                     }
+                                    if (!context.mounted) return;
+                                    formKey.currentState!.reset();
+                                    Fluttertoast.showToast(
+                                        msg: "สร้างบัญชีผู้ใช้เรียบร้อยแล้ว",
+                                        gravity: ToastGravity.TOP);
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              const HomeScreen()),
+                                    );
+                                  } on FirebaseAuthException catch (e) {
+                                    setState(() {
+                                      String message;
+                                      if (e.code == 'email-already-in-use') {
+                                        message =
+                                            "มีอีเมลนี้ในระบบแล้วครับ โปรดใช้อีเมลอื่นแทน";
+                                      } else if (e.code == 'weak-password') {
+                                        message =
+                                            "รหัสผ่านต้องมีความยาว 6 ตัวอักษรขึ้นไป";
+                                      } else {
+                                        message = e.message ?? "เกิดข้อผิดพลาด";
+                                      }
+                                      Fluttertoast.showToast(
+                                          msg: message,
+                                          gravity: ToastGravity.CENTER,
+                                          backgroundColor: Colors.red,
+                                          textColor: Colors.white,
+                                          fontSize: 16.0);
+                                    });
                                   }
-                                },
-                              ),
-                            )
-                          ],
-                        ),
+                                }
+                              },
+                            ),
+                          )
+                        ],
                       ),
                     ),
                   ),
@@ -164,7 +170,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           }
           return Scaffold(
             body: Center(
-              child: CircularProgressIndicator(),
+              child: const CircularProgressIndicator(),
             ),
           );
         });

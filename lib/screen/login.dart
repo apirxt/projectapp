@@ -8,8 +8,10 @@ import 'package:projectapp/screen/main_screen.dart';
 import 'home.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -35,126 +37,126 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
           if (snapshot.connectionState == ConnectionState.done) {
-            return WillPopScope(
-              onWillPop: () async {
+            return PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) {
+                if (didPop) return;
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => HomeScreen()),
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
                   (Route<dynamic> route) => false,
                 );
-                return false;
               },
               child: Scaffold(
                 appBar: AppBar(
-                  title: Text("เข้าสู่ระบบ"),
+                  title: const Text("เข้าสู่ระบบ"),
                   leading: IconButton(
-                    icon: Icon(Icons.arrow_back),
+                    icon: const Icon(Icons.arrow_back),
                     onPressed: () {
                       Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => HomeScreen()),
+                        MaterialPageRoute(
+                            builder: (context) => const HomeScreen()),
                         (Route<dynamic> route) => false,
                       );
                     },
                   ),
                 ),
-                body: Container(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Form(
-                      key: formKey,
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("อีเมล", style: TextStyle(fontSize: 20)),
-                            TextFormField(
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return "กรุณาป้อนอีเมลด้วยครับ";
-                                }
-                                return null;
-                              },
-                              keyboardType: TextInputType.emailAddress,
-                              onSaved: (String? email) {
-                                profile.email = email!;
-                              },
-                              decoration: InputDecoration(
-                                errorText: emailError,
-                              ),
+                body: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("อีเมล", style: TextStyle(fontSize: 20)),
+                          TextFormField(
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "กรุณาป้อนอีเมลด้วยครับ";
+                              }
+                              return null;
+                            },
+                            keyboardType: TextInputType.emailAddress,
+                            onSaved: (String? email) {
+                              profile.email = email!;
+                            },
+                            decoration: InputDecoration(
+                              errorText: emailError,
                             ),
-                            SizedBox(
-                              height: 15,
+                          ),
+                          const SizedBox(
+                            height: 15,
+                          ),
+                          const Text("รหัสผ่าน",
+                              style: TextStyle(fontSize: 20)),
+                          TextFormField(
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "กรุณาป้อนรหัสผ่านด้วยครับ";
+                              }
+                              return null;
+                            },
+                            obscureText: true,
+                            onSaved: (String? password) {
+                              profile.password = password!;
+                            },
+                            decoration: InputDecoration(
+                              errorText: passwordError,
                             ),
-                            Text("รหัสผ่าน", style: TextStyle(fontSize: 20)),
-                            TextFormField(
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return "กรุณาป้อนรหัสผ่านด้วยครับ";
-                                }
-                                return null;
-                              },
-                              obscureText: true,
-                              onSaved: (String? password) {
-                                profile.password = password!;
-                              },
-                              decoration: InputDecoration(
-                                errorText: passwordError,
-                              ),
-                            ),
-                            const SizedBox(height: 50),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                child: Text("เข้าสู่ระบบ",
-                                    style: TextStyle(fontSize: 20)),
-                                onPressed: () async {
-                                  if (formKey.currentState!.validate()) {
-                                    formKey.currentState!.save();
-                                    try {
-                                      await FirebaseAuth.instance
-                                          .signInWithEmailAndPassword(
-                                              email: profile.email!,
-                                              password: profile.password!)
-                                          .then((value) {
-                                        formKey.currentState!.reset();
-                                        Fluttertoast.showToast(
-                                            msg: "เข้าสู่ระบบสำเร็จ",
-                                            gravity: ToastGravity.CENTER);
-                                        Navigator.pushReplacement(context,
-                                            MaterialPageRoute(
-                                                builder: (context) {
-                                          return MainScreen();
-                                        }));
-                                      });
-                                    } on FirebaseAuthException catch (e) {
-                                      setState(() {
+                          ),
+                          const SizedBox(height: 50),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              child: const Text("เข้าสู่ระบบ",
+                                  style: TextStyle(fontSize: 20)),
+                              onPressed: () async {
+                                if (formKey.currentState!.validate()) {
+                                  formKey.currentState!.save();
+                                  try {
+                                    await FirebaseAuth.instance
+                                        .signInWithEmailAndPassword(
+                                            email: profile.email!,
+                                            password: profile.password!);
+                                    if (!context.mounted) return;
+                                    formKey.currentState!.reset();
+                                    Fluttertoast.showToast(
+                                        msg: "เข้าสู่ระบบสำเร็จ",
+                                        gravity: ToastGravity.CENTER);
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              const MainScreen()),
+                                    );
+                                  } on FirebaseAuthException catch (e) {
+                                    setState(() {
+                                      emailError = null;
+                                      passwordError = null;
+                                      if (e.code == 'user-not-found' ||
+                                          e.code == 'invalid-email') {
+                                        emailError = e.code == 'user-not-found'
+                                            ? "ไม่พบบัญชีผู้ใช้นี้"
+                                            : "รูปแบบอีเมลไม่ถูกต้อง";
+                                      } else if (e.code == 'wrong-password') {
+                                        passwordError = "รหัสผ่านไม่ถูกต้อง";
+                                      } else {
                                         emailError = null;
-                                        passwordError = null;
-                                        if (e.code == 'user-not-found' ||
-                                            e.code == 'invalid-email') {
-                                          emailError =
-                                              e.code == 'user-not-found'
-                                                  ? "ไม่พบบัญชีผู้ใช้นี้"
-                                                  : "รูปแบบอีเมลไม่ถูกต้อง";
-                                        } else if (e.code == 'wrong-password') {
-                                          passwordError = "รหัสผ่านไม่ถูกต้อง";
-                                        } else {
-                                          emailError = null;
-                                          passwordError =
-                                              "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
-                                        }
-                                      });
-                                      Fluttertoast.showToast(
-                                          msg: emailError ??
-                                              passwordError ??
-                                              "เกิดข้อผิดพลาด",
-                                          gravity: ToastGravity.CENTER);
-                                    }
+                                        passwordError =
+                                            "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+                                      }
+                                    });
+                                    Fluttertoast.showToast(
+                                        msg: emailError ??
+                                            passwordError ??
+                                            "เกิดข้อผิดพลาด",
+                                        gravity: ToastGravity.CENTER);
                                   }
-                                },
-                              ),
-                            )
-                          ],
-                        ),
+                                }
+                              },
+                            ),
+                          )
+                        ],
                       ),
                     ),
                   ),
@@ -164,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
           return Scaffold(
             body: Center(
-              child: CircularProgressIndicator(),
+              child: const CircularProgressIndicator(),
             ),
           );
         });

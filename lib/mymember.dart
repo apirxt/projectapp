@@ -7,14 +7,14 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'dart:io';
 
-class mymember extends StatefulWidget {
-  const mymember({super.key});
+class MyMember extends StatefulWidget {
+  const MyMember({super.key});
 
   @override
-  State<mymember> createState() => _mymemberState();
+  State<MyMember> createState() => _MyMemberState();
 }
 
-class _mymemberState extends State<mymember> {
+class _MyMemberState extends State<MyMember> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController carCountController = TextEditingController();
   final TextEditingController bikeCountController = TextEditingController();
@@ -274,7 +274,7 @@ class _mymemberState extends State<mymember> {
                               setDialogState(() {
                                 localImageUrlInDialog = imageUrl;
                               });
-                              if (mounted) {
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                       content: Text('อัปโหลดรูปภาพเรียบร้อย')),
@@ -282,7 +282,7 @@ class _mymemberState extends State<mymember> {
                               }
                             } catch (e) {
                               // Show an error message if something goes wrong
-                              if (mounted) {
+                              if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                       content:
@@ -336,7 +336,7 @@ class _mymemberState extends State<mymember> {
 
                   final uid = FirebaseAuth.instance.currentUser?.uid;
                   if (uid == null) {
-                    if (mounted) {
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                             content: Text('กรุณาเข้าสู่ระบบก่อนบันทึก')),
@@ -384,7 +384,9 @@ class _mymemberState extends State<mymember> {
                     });
 
                     // Clear the input fields and close the dialog
-                    Navigator.pop(context);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                    }
                     nameController.clear();
                     carCountController.clear();
                     bikeCountController.clear();
@@ -398,9 +400,11 @@ class _mymemberState extends State<mymember> {
                     selectedLocation = null; // Clear the selected location
                   } catch (e) {
                     // Show an error message if something goes wrong
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
-                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+                      );
+                    }
                   }
                 } else {
                   setDialogState(() {
@@ -690,7 +694,7 @@ class _mymemberState extends State<mymember> {
 class ParkingDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
 
-  const ParkingDetailScreen({Key? key, required this.data}) : super(key: key);
+  const ParkingDetailScreen({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -745,7 +749,7 @@ class ParkingDetailScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
-                Container(
+                SizedBox(
                   height: 200,
                   child: GoogleMap(
                     initialCameraPosition: CameraPosition(
@@ -784,14 +788,16 @@ class ParkingDetailScreen extends StatelessWidget {
 }
 
 class MapScreen extends StatefulWidget {
+  const MapScreen({super.key});
+
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
 class _MapScreenState extends State<MapScreen> {
   late GoogleMapController _controller;
-  TextEditingController _searchController = TextEditingController();
-  Set<Marker> _markers = {};
+  final TextEditingController _searchController = TextEditingController();
+  final Set<Marker> _markers = {};
   LatLng? _selectedLocation;
 
   static const CameraPosition _initialPosition = CameraPosition(
@@ -824,6 +830,7 @@ class _MapScreenState extends State<MapScreen> {
     try {
       final results = await geocoding.locationFromAddress(query);
       if (results.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('ไม่พบสถานที่ที่ค้นหา')),
         );
@@ -838,6 +845,7 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ค้นหาสถานที่ล้มเหลว: $e')),
       );

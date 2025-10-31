@@ -3,11 +3,12 @@ import 'package:projectapp/screen/login.dart';
 import 'package:projectapp/screen/register.dart';
 
 class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Register/Login"),
+        title: const Text("Register/Login"),
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(10, 50, 10, 0),
@@ -18,12 +19,13 @@ class HomeScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  icon: Icon(Icons.add),
-                  label:
-                      Text("สร้างบัญชีผู้ใช้", style: TextStyle(fontSize: 20)),
+                  icon: const Icon(Icons.add),
+                  label: const Text("สร้างบัญชีผู้ใช้",
+                      style: TextStyle(fontSize: 20)),
                   onPressed: () {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => RegisterScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const RegisterScreen()),
                       (Route<dynamic> route) => false,
                     );
                   },
@@ -32,11 +34,13 @@ class HomeScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  icon: Icon(Icons.login),
-                  label: Text("เข้าสู่ระบบ", style: TextStyle(fontSize: 20)),
+                  icon: const Icon(Icons.login),
+                  label:
+                      const Text("เข้าสู่ระบบ", style: TextStyle(fontSize: 20)),
                   onPressed: () {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => LoginScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => const LoginScreen()),
                       (Route<dynamic> route) => false,
                     );
                   },

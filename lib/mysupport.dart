@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:projectapp/screen/home.dart';
 import 'package:projectapp/screen/account_profile.dart';
 
-class mysupport extends StatefulWidget {
-  const mysupport({super.key});
+class MySupport extends StatefulWidget {
+  const MySupport({super.key});
 
   @override
-  State<mysupport> createState() => _mysupportState();
+  State<MySupport> createState() => _MySupportState();
 }
 
-class _mysupportState extends State<mysupport> {
+class _MySupportState extends State<MySupport> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -23,10 +23,10 @@ class _mysupportState extends State<mysupport> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
+              if (!context.mounted) return;
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (context) => HomeScreen()),
+                MaterialPageRoute(builder: (context) => const HomeScreen()),
                 (route) => false,
               );
             },

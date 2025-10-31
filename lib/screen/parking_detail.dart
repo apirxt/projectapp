@@ -8,8 +8,7 @@ class ParkingDetail extends StatefulWidget {
   final String docId; // Firestore document id for this parking slot
 
   const ParkingDetail(
-      {Key? key, required this.parkingData, required this.docId})
-      : super(key: key);
+      {super.key, required this.parkingData, required this.docId});
 
   @override
   State<ParkingDetail> createState() => _ParkingDetailState();

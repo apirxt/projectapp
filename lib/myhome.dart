@@ -3,14 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'screen/parking_detail.dart';
 
-class myhome extends StatefulWidget {
-  const myhome({super.key});
+class MyHome extends StatefulWidget {
+  const MyHome({super.key});
 
   @override
-  State<myhome> createState() => _myhomeState();
+  State<MyHome> createState() => _MyHomeState();
 }
 
-class _myhomeState extends State<myhome> {
+class _MyHomeState extends State<MyHome> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   Position? _currentPosition;
@@ -54,7 +54,7 @@ class _myhomeState extends State<myhome> {
                     const Icon(Icons.radar, size: 18),
                     const SizedBox(width: 6),
                     Text(
-                        'กรองระยะทาง: ${((_radiusMeters! >= 1000) ? (_radiusMeters! / 1000).toStringAsFixed(1) + ' กม.' : _radiusMeters!.toStringAsFixed(0) + ' ม.')}')
+                        'กรองระยะทาง: ${_radiusMeters! >= 1000 ? '${(_radiusMeters! / 1000).toStringAsFixed(1)} กม.' : '${_radiusMeters!.toStringAsFixed(0)} ม.'}')
                   ],
                 ),
               ),
@@ -84,8 +84,9 @@ class _myhomeState extends State<myhome> {
 
                   // Apply radius filter if location data exists on the document
                   final GeoPoint? gp = data['location'] as GeoPoint?;
-                  if (gp == null)
+                  if (gp == null) {
                     return false; // exclude docs without location when filtering by radius
+                  }
 
                   final distance = Geolocator.distanceBetween(
                     _currentPosition!.latitude,
@@ -233,7 +234,10 @@ class _myhomeState extends State<myhome> {
       }
 
       final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
       setState(() {
         _currentPosition = pos;
       });

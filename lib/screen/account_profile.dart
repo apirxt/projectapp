@@ -182,19 +182,20 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     if (user == null) return;
     try {
       setState(() => _busy = true);
-      await user!.updateEmail(_emailCtl.text.trim());
-      await user!.reload();
-      _hydrate();
-      if (mounted) setState(() {});
+      // Send verification link to new email before updating
+      await user!.verifyBeforeUpdateEmail(_emailCtl.text.trim());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('อัปเดตอีเมลเรียบร้อย')),
+          const SnackBar(
+              content: Text(
+                  'ส่งอีเมลยืนยันไปยังอีเมลใหม่แล้ว โปรดตรวจสอบกล่องจดหมาย')),
         );
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') {
         if (!mounted) return;
-        _promptReauthAnd(() => user!.updateEmail(_emailCtl.text.trim()));
+        _promptReauthAnd(
+            () => user!.verifyBeforeUpdateEmail(_emailCtl.text.trim()));
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
