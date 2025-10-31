@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Location permissions required for radius filtering and Google Maps myLocation -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Optional: declare GPS feature as not strictly required so app can install on devices without GPS -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <application
         android:label="projectapp"
         android:name="${applicationName}"

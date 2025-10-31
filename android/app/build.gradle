@@ -23,7 +23,7 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.projectapp"
-        minSdk = 23 // แก้ตรงนี้!
+        minSdkVersion = flutter.minSdkVersion // แก้ตรงนี้!
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
