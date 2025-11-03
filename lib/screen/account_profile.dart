@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:projectapp/screen/home.dart';
 
 class AccountProfileScreen extends StatefulWidget {
   const AccountProfileScreen({super.key});
@@ -79,11 +80,6 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _busy ? null : _saveDisplayName,
-            child: const Text('บันทึกชื่อผู้ใช้'),
-          ),
           const Divider(height: 32),
           TextField(
             controller: _emailCtl,
@@ -92,16 +88,6 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
               labelText: 'อีเมล',
               border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _busy ? null : _saveEmail,
-            child: const Text('บันทึกอีเมล'),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _busy ? null : _changePassword,
-            child: const Text('เปลี่ยนรหัสผ่าน'),
           ),
           const Divider(height: 32),
           TextField(
@@ -112,12 +98,34 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _busy ? null : _updatePhone,
-            child: const Text('อัปเดตหมายเลขโทรศัพท์'),
-          ),
+          const SizedBox(height: 80),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                onPressed: _busy ? null : _saveAll,
+                child: const Text('บันทึกการเปลี่ยนแปลง'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _busy ? null : _changePassword,
+                child: const Text('เปลี่ยนรหัสผ่าน'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _busy ? null : _signOut,
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('ออกจากระบบ'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -148,60 +156,6 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('อัปโหลดรูปโปรไฟล์ล้มเหลว: $e')),
         );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _saveDisplayName() async {
-    if (user == null) return;
-    try {
-      setState(() => _busy = true);
-      await user!.updateDisplayName(_displayNameCtl.text.trim());
-      await user!.reload();
-      _hydrate();
-      if (mounted) setState(() {});
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('บันทึกชื่อผู้ใช้เรียบร้อย')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('บันทึกชื่อผู้ใช้ไม่สำเร็จ: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _saveEmail() async {
-    if (user == null) return;
-    try {
-      setState(() => _busy = true);
-      // Send verification link to new email before updating
-      await user!.verifyBeforeUpdateEmail(_emailCtl.text.trim());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'ส่งอีเมลยืนยันไปยังอีเมลใหม่แล้ว โปรดตรวจสอบกล่องจดหมาย')),
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        if (!mounted) return;
-        _promptReauthAnd(
-            () => user!.verifyBeforeUpdateEmail(_emailCtl.text.trim()));
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('อัปเดตอีเมลไม่สำเร็จ: ${e.message}')),
-          );
-        }
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -264,64 +218,70 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     }
   }
 
-  Future<void> _updatePhone() async {
+  Future<void> _saveAll() async {
     if (user == null) return;
-    final phone = _phoneCtl.text.trim();
-    if (phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกหมายเลขโทรศัพท์')),
-      );
+    final currentName = user!.displayName ?? '';
+    final currentEmail = user!.email ?? '';
+    final currentPhone = user!.phoneNumber ?? '';
+
+    final newName = _displayNameCtl.text.trim();
+    final newEmail = _emailCtl.text.trim();
+    final newPhone = _phoneCtl.text.trim();
+
+    final wantsName = newName.isNotEmpty && newName != currentName;
+    final wantsEmail = newEmail.isNotEmpty && newEmail != currentEmail;
+    final wantsPhone = newPhone.isNotEmpty && newPhone != currentPhone;
+
+    if (!wantsName && !wantsEmail && !wantsPhone) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ไม่มีการเปลี่ยนแปลง')),
+        );
+      }
       return;
     }
+
     setState(() => _busy = true);
     try {
-      String? verificationId;
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (cred) async {
-          try {
-            await user!.updatePhoneNumber(cred);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('อัปเดตหมายเลขโทรศัพท์เรียบร้อย')),
-              );
-            }
-          } catch (_) {}
-        },
-        verificationFailed: (e) {
+      // 1) display name
+      if (wantsName) {
+        await user!.updateDisplayName(newName);
+      }
+
+      // 2) email (verify link flow)
+      if (wantsEmail) {
+        try {
+          await user!.verifyBeforeUpdateEmail(newEmail);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('ยืนยันหมายเลขล้มเหลว: ${e.message}')),
+              const SnackBar(content: Text('ส่งอีเมลยืนยันไปยังอีเมลใหม่แล้ว')),
             );
           }
-        },
-        codeSent: (vid, _) async {
-          verificationId = vid;
-          final codeCtl = TextEditingController();
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('กรอกรหัสยืนยัน (SMS)'),
-              content: TextField(
-                controller: codeCtl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'รหัส 6 หลัก'),
-              ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('ยกเลิก')),
-                ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('ยืนยัน')),
-              ],
-            ),
-          );
-          if (ok == true && verificationId != null) {
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'requires-recent-login') {
+            // release busy for dialog flow
+            if (mounted) setState(() => _busy = false);
+            await _promptReauthAnd(
+                () => user!.verifyBeforeUpdateEmail(newEmail));
+            if (!mounted) return;
+            setState(() => _busy = true);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('อัปเดตอีเมลไม่สำเร็จ: ${e.message}')),
+              );
+            }
+          }
+        }
+      }
+
+      // 3) phone – interactive verify
+      if (wantsPhone) {
+        String? verificationId;
+        await FirebaseAuth.instance.verifyPhoneNumber(
+          phoneNumber: newPhone,
+          verificationCompleted: (cred) async {
             try {
-              final cred = PhoneAuthProvider.credential(
-                  verificationId: verificationId!,
-                  smsCode: codeCtl.text.trim());
               await user!.updatePhoneNumber(cred);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -329,21 +289,85 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       content: Text('อัปเดตหมายเลขโทรศัพท์เรียบร้อย')),
                 );
               }
-            } on FirebaseAuthException catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text('อัปเดตหมายเลขไม่สำเร็จ: ${e.message}')),
-                );
+            } catch (_) {}
+          },
+          verificationFailed: (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('ยืนยันหมายเลขล้มเหลว: ${e.message}')),
+              );
+            }
+          },
+          codeSent: (vid, _) async {
+            verificationId = vid;
+            final codeCtl = TextEditingController();
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('กรอกรหัสยืนยัน (SMS)'),
+                content: TextField(
+                  controller: codeCtl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'รหัส 6 หลัก'),
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('ยกเลิก')),
+                  ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('ยืนยัน')),
+                ],
+              ),
+            );
+            if (ok == true && verificationId != null) {
+              try {
+                final cred = PhoneAuthProvider.credential(
+                    verificationId: verificationId!,
+                    smsCode: codeCtl.text.trim());
+                await user!.updatePhoneNumber(cred);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('อัปเดตหมายเลขโทรศัพท์เรียบร้อย')),
+                  );
+                }
+              } on FirebaseAuthException catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('อัปเดตหมายเลขไม่สำเร็จ: ${e.message}')),
+                  );
+                }
               }
             }
-          }
-        },
-        codeAutoRetrievalTimeout: (_) {},
-      );
+          },
+          codeAutoRetrievalTimeout: (_) {},
+        );
+        // done flag is best-effort; flows may complete after callback
+      }
+
+      await user!.reload();
+      _hydrate();
+      if (mounted) setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('บันทึกข้อมูลเรียบร้อย')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _promptReauthAnd(Future<void> Function() action) async {

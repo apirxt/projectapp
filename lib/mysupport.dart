@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:projectapp/screen/home.dart';
 import 'package:projectapp/screen/account_profile.dart';
 
 class MySupport extends StatefulWidget {
@@ -18,20 +17,6 @@ class _MySupportState extends State<MySupport> {
       appBar: AppBar(
         backgroundColor: Colors.blue,
         title: const Text('Support'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const HomeScreen()),
-                (route) => false,
-              );
-            },
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
