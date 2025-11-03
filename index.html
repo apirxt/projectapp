@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProjectApp Admin</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
+      .danger { color: #b00020; }
+      button { cursor: pointer; }
+      #adminOnly { display: none; }
+      #notAdmin { display: none; }
+    </style>
+  </head>
+  <body>
+    <h2>ProjectApp – Admin</h2>
+
+    <div id="authCard" class="card">
+      <div class="row">
+        <input id="email" placeholder="อีเมลผู้ดูแล" />
+        <input id="password" type="password" placeholder="รหัสผ่าน" />
+        <button id="btnSignIn">เข้าสู่ระบบ</button>
+        <button id="btnSignOut">ออกจากระบบ</button>
+      </div>
+      <div class="row"><span id="me"></span></div>
+      <div id="notAdmin" class="row">
+        <span class="danger">บัญชีนี้ยังไม่เป็นผู้ดูแลระบบ</span>
+        <button id="btnBootstrap">ฉันคือผู้ดูแลคนแรก</button>
+      </div>
+    </div>
+
+    <div id="adminOnly" class="card">
+      <div class="row" style="justify-content: space-between;">
+        <strong>จัดการผู้ใช้</strong>
+        <div class="row">
+          <button id="btnRefresh">รีเฟรช</button>
+          <button id="btnPrev">ก่อนหน้า</button>
+          <button id="btnNext">ถัดไป</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>อีเมล</th>
+            <th>ชื่อ</th>
+            <th>UID</th>
+            <th>สิทธิ์</th>
+            <th>สถานะ</th>
+            <th>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody id="users"></tbody>
+      </table>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js"></script>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+  </html>
