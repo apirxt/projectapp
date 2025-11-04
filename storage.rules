@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.isAdmin == true; }
+    function ownerUidFromResource() { return resource != null && resource.metadata != null && resource.metadata.customMetadata != null ? resource.metadata.customMetadata.ownerUid : null; }
+    function ownerUidFromRequest() { return request.resource != null && request.resource.metadata != null && request.resource.metadata.customMetadata != null ? request.resource.metadata.customMetadata.ownerUid : null; }
+
+    // Admin override: สามารถอ่าน/เขียนได้ทุกไฟล์ ทุกพาธ
+    match /{allPaths=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // โฟลเดอร์รูปที่ใช้ในแอป
+    match /parking_images/{filePath=**} {
+      // อ่านได้เมื่อผู้ใช้ล็อกอิน
+      allow read: if isSignedIn();
+
+      // อัปโหลดไฟล์ใหม่: ต้องแนบ metadata.customMetadata.ownerUid เป็น uid ของผู้ใช้
+      allow create: if isSignedIn() && ownerUidFromRequest() == request.auth.uid;
+
+      // แก้ไข/ลบไฟล์เดิม: อนุญาตเจ้าของไฟล์หรือแอดมิน
+      allow update, delete: if (isSignedIn() && ownerUidFromResource() == request.auth.uid);
+    }
+  }
+}

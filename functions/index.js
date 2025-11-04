@@ -12,6 +12,7 @@ try { legacyConfig = require("firebase-functions").config(); } catch (_) { legac
 // Secrets (recommended for Gen2)
 const STRIPE_SECRET = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
+const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
 
 try {
   admin.app();
@@ -682,4 +683,96 @@ exports.stripeEnv = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] 
       has_stripe_secret: Boolean(legacyConfig?.stripe?.secret),
     },
   });
+});
+
+/**
+ * Admin: delete a Storage image by path or URL.
+ * data: { path?: string, url?: string }
+ */
+exports.adminDeleteImage = onCall(async (request) => {
+  assertAdmin(request);
+  const data = request.data || {};
+  let { path, url } = data;
+  if (!path && !url) {
+    throw new HttpsError('invalid-argument', 'ต้องระบุ path หรือ url');
+  }
+  try {
+    if (!path && url) {
+      path = extractPathFromImageUrl(url);
+    }
+    if (!path) {
+      throw new HttpsError('invalid-argument', 'url ไม่ถูกต้อง หรือไม่สามารถแปลงเป็น path ได้');
+    }
+    const bucket = getDefaultBucket();
+    await bucket.file(path).delete({ ignoreNotFound: true });
+    await logAdminAction('adminDeleteImage', request, { path });
+    return { ok: true, path };
+  } catch (e) {
+    throw new HttpsError('internal', String(e?.message || e));
+  }
+});
+
+/**
+ * Route distance matrix using Google Distance Matrix API.
+ * callable: routeMatrix
+ * data: {
+ *   origin: { lat: number, lng: number },
+ *   destinations: Array<{ lat: number, lng: number }>,
+ *   mode?: 'driving' | 'walking' | 'bicycling' | 'transit'
+ * }
+ * Returns: { distances: Array<{ meters: number|null, seconds: number|null }>, status: string }
+ */
+exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบก่อน');
+  }
+  const data = request.data || {};
+  const origin = data.origin;
+  const destinations = Array.isArray(data.destinations) ? data.destinations : [];
+  const mode = (data.mode || 'driving');
+
+  if (!origin || typeof origin.lat !== 'number' || typeof origin.lng !== 'number') {
+    throw new HttpsError('invalid-argument', 'origin ไม่ถูกต้อง');
+  }
+  if (destinations.length === 0) {
+    return { distances: [], status: 'ok' };
+  }
+  // Cap to 25 destinations per request to stay within common quotas
+  const capped = destinations.slice(0, 25);
+
+  const key = GOOGLE_MAPS_API_KEY.value() || process.env.GOOGLE_MAPS_API_KEY || legacyConfig?.google?.maps_api_key;
+  if (!key) {
+    throw new HttpsError('failed-precondition', 'ยังไม่ตั้งค่า GOOGLE_MAPS_API_KEY บน Functions Secrets');
+  }
+
+  const originsParam = `${origin.lat},${origin.lng}`;
+  const destParam = capped.map(d => `${d.lat},${d.lng}`).join('|');
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(originsParam)}&destinations=${encodeURIComponent(destParam)}&mode=${encodeURIComponent(mode)}&units=metric&key=${encodeURIComponent(key)}`;
+
+  let json;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${text}`);
+    }
+    json = await resp.json();
+  } catch (e) {
+    throw new HttpsError('internal', `fetch_error: ${String(e?.message || e)}`);
+  }
+
+  if (json.status !== 'OK') {
+    throw new HttpsError('internal', `distance_matrix_error: ${json.status}`);
+  }
+
+  const row = Array.isArray(json.rows) && json.rows[0];
+  const elements = Array.isArray(row?.elements) ? row.elements : [];
+  const out = elements.map(el => {
+    if (!el || el.status !== 'OK') return { meters: null, seconds: null };
+    const meters = el.distance?.value ?? null;
+    const seconds = el.duration?.value ?? null;
+    return { meters, seconds };
+  });
+
+  return { distances: out, status: 'ok' };
 });

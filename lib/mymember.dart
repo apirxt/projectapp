@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -28,6 +29,46 @@ class _MyMemberState extends State<MyMember> {
   bool _isImagePickerActive = false; // Add a flag to track ImagePicker state
   String? nameError; // Add a variable to store the error message
   LatLng? selectedLocation; // Add a variable to store the selected location
+  bool _isAdmin = false; // Admin can manage all listings
+
+  @override
+  void initState() {
+    super.initState();
+    _loadClaims();
+  }
+
+  Future<void> _adminDeleteByUrl(String url) async {
+    if (!_isAdmin) return;
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('adminDeleteImage');
+      await fn.call({'url': url});
+    } catch (_) {}
+  }
+
+  Future<void> _adminDeleteByPath(String path) async {
+    if (!_isAdmin) return;
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('adminDeleteImage');
+      await fn.call({'path': path});
+    } catch (_) {}
+  }
+
+  Future<void> _loadClaims() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final result = await user.getIdTokenResult(true);
+      final isAdmin = (result.claims?["isAdmin"] == true);
+      if (!mounted) return;
+      setState(() {
+        _isAdmin = isAdmin;
+      });
+    } catch (_) {
+      // ignore
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +108,7 @@ class _MyMemberState extends State<MyMember> {
                     final data = docSnap.data() as Map<String, dynamic>;
                     final isOwner =
                         (currentUid != null && data['ownerId'] == currentUid);
+                    final canManage = isOwner || _isAdmin;
                     return ListTile(
                       leading: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -92,7 +134,7 @@ class _MyMemberState extends State<MyMember> {
                               255, 175, 175, 175), // เปลี่ยนสีของตัวอักษร
                         ),
                       ),
-                      trailing: isOwner
+                      trailing: canManage
                           ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -184,13 +226,18 @@ class _MyMemberState extends State<MyMember> {
         try {
           final ref = FirebaseStorage.instance.refFromURL(imageUrl);
           await ref.delete();
-        } catch (_) {}
+        } catch (_) {
+          // ถ้าลบไม่ได้ (เช่น สิทธิ์ไม่พอ) และเป็นแอดมิน ให้ลองลบผ่าน Cloud Function
+          await _adminDeleteByUrl(imageUrl);
+        }
       }
       for (final p in paths) {
         try {
           final ref = FirebaseStorage.instance.ref(p);
           await ref.delete();
-        } catch (_) {}
+        } catch (_) {
+          await _adminDeleteByPath(p);
+        }
       }
 
       // ลบเอกสาร Firestore หลังจากจัดการรูปแล้ว
@@ -338,12 +385,18 @@ class _MyMemberState extends State<MyMember> {
                           if (image != null) {
                             try {
                               // Upload image to Firebase Storage
+                              final uid =
+                                  FirebaseAuth.instance.currentUser?.uid;
                               final storageRef = FirebaseStorage.instance
                                   .ref()
                                   .child(
                                       'parking_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
-                              final uploadTask =
-                                  await storageRef.putFile(File(image.path));
+                              final uploadTask = await storageRef.putFile(
+                                File(image.path),
+                                SettableMetadata(customMetadata: {
+                                  if (uid != null) 'ownerUid': uid,
+                                }),
+                              );
 
                               // Get the download URL and keep locally until Save
                               final imageUrl =
@@ -650,8 +703,14 @@ class _MyMemberState extends State<MyMember> {
                                   .ref()
                                   .child(
                                       'parking_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
-                              final uploadTask =
-                                  await storageRef.putFile(File(image.path));
+                              final uid =
+                                  FirebaseAuth.instance.currentUser?.uid;
+                              final uploadTask = await storageRef.putFile(
+                                File(image.path),
+                                SettableMetadata(customMetadata: {
+                                  if (uid != null) 'ownerUid': uid,
+                                }),
+                              );
                               final url = await uploadTask.ref.getDownloadURL();
                               setDialogState(() {
                                 localImageUrl = url;

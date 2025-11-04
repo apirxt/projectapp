@@ -14,6 +14,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _canHostParking = false;
+  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -28,7 +29,8 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       final claims = token.claims ?? {};
       _canHostParking = claims['canHostParking'] == true;
-      if (!_canHostParking && _selectedIndex == 1) {
+      _isAdmin = claims['isAdmin'] == true;
+      if (!(_canHostParking || _isAdmin) && _selectedIndex == 1) {
         _selectedIndex = 0; // fallback to first tab if member tab hidden
       }
     });
@@ -44,7 +46,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final pages = <Widget>[
       const MyHome(),
-      if (_canHostParking) const MyMember(),
+      if (_canHostParking || _isAdmin) const MyMember(),
       const MySupport(),
     ];
 
@@ -53,7 +55,7 @@ class _MainScreenState extends State<MainScreen> {
         icon: Icon(Icons.local_parking),
         label: 'หาเช่าที่จอดรถ',
       ),
-      if (_canHostParking)
+      if (_canHostParking || _isAdmin)
         const BottomNavigationBarItem(
           icon: Icon(Icons.person),
           label: 'ปล่อยเช่าที่จอดรถ',

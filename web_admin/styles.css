@@ -1,0 +1,11 @@
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+.card { border: 1px solid #ddd; padding: 12px; border-radius: 6px; margin-bottom: 16px; background: #fff; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row-between { justify-content: space-between; }
+.table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
+.danger { color: #b00020; }
+button { cursor: pointer; }
+#adminOnly { display: none; }
+#notAdmin { display: none; }
+.hidden { display: none; }

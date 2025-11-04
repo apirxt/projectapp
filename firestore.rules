@@ -2,6 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Admin override: ผู้ใช้ที่มี custom claim isAdmin = true สามารถทำทุกอย่างได้ทั่วทั้งฐาน
+    function isAdmin() {
+      return request.auth != null && request.auth.token.isAdmin == true;
+    }
+
+    // อนุญาต admin ทั้งอ่านและเขียนทุก path
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -12,9 +22,24 @@ service cloud.firestore {
              request.time < get(/databases/$(database)/documents/users/$(uid)).data.hostActiveUntil;
     }
 
+    function canHostByDoc(uid) {
+      // อนุญาตตามสถานะในเอกสารผู้ใช้: approved หรือ active
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/users/$(uid))
+             && (
+               get(/databases/$(database)/documents/users/$(uid)).data.hostStatus == "approved" ||
+               get(/databases/$(database)/documents/users/$(uid)).data.hostStatus == "active"
+             );
+    }
+
     function canHost() {
-      // ต้องมี claim และต้องยังไม่หมดอายุจากเอกสารผู้ใช้
-      return isSignedIn() && request.auth.token.canHostParking == true && hostActive(request.auth.uid);
+      // อนุญาตเมื่ออย่างใดอย่างหนึ่งเป็นจริง:
+      // - มี custom claim canHostParking (กรณีอนุมัติผ่านแอดมิน/ชำระเงิน และยังไม่ถูกลบ claim)
+      // - หรือ สถานะใน users/{uid} เป็น approved/active (รองรับกรณี claim ถูกลบหลังหมดอายุแต่ยังอยากให้ approved สร้างได้)
+      return isSignedIn() && (
+        request.auth.token.canHostParking == true ||
+        canHostByDoc(request.auth.uid)
+      );
     }
 
     function isOwner(ownerId) {
@@ -29,21 +54,24 @@ service cloud.firestore {
              request.time < get(/databases/$(database)/documents/users/$(ownerId)).data.hostActiveUntil;
     }
 
-    // เอกสารหลักที่จอดรถ
+  // เอกสารหลักที่จอดรถ
     match /parking_slots/{slotId} {
-  // อ่านได้เฉพาะกรณีที่เจ้าของประกาศยัง active อยู่เท่านั้น -> จะหายทันทีเมื่อหมดเวลา
-  allow read: if isSignedIn() && ownerHostActive(resource.data.ownerId);
+  // อ่าน: อนุญาตผู้ใช้ที่ล็อกอินทุกคนอ่านรายการได้
+  // เหตุผล: กฎเดิมอ้างอิงข้ามเอกสาร (ownerHostActive) ทำให้ query แบบไม่ใส่ where ที่จำกัดตามเงื่อนไข
+  // (เช่น .orderBy('timestamp')) ถูก Firestore ปฏิเสธด้วย PERMISSION_DENIED
+  // การซ่อนประกาศที่หมดอายุ/สิทธิ์หมดจะทำผ่าน Cloud Functions ที่ลบประกาศของผู้ใช้ที่หมดอายุแทน
+  allow read: if isSignedIn();
 
   // สร้างได้เมื่อมีสิทธิ์ canHostParking และยังไม่หมดอายุ และ ownerId = uid ของผู้ใช้
-      allow create: if canHost() && request.resource.data.ownerId == request.auth.uid;
+  allow create: if canHost() && request.resource.data.ownerId == request.auth.uid;
 
   // แก้ไขได้เฉพาะเจ้าของที่มีสิทธิ์ (ยังไม่หมดอายุ) และห้ามเปลี่ยน ownerId
-      allow update: if canHost()
-                    && isOwner(resource.data.ownerId)
-                    && request.resource.data.ownerId == resource.data.ownerId;
+  allow update: if canHost()
+        && isOwner(resource.data.ownerId)
+        && request.resource.data.ownerId == resource.data.ownerId;
 
   // ลบได้เฉพาะเจ้าของที่มีสิทธิ์ (ยังไม่หมดอายุ)
-      allow delete: if canHost() && isOwner(resource.data.ownerId);
+  allow delete: if canHost() && isOwner(resource.data.ownerId);
 
       // ซับคอลเล็กชันรีวิว
       match /reviews/{reviewId} {
