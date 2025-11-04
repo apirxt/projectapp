@@ -118,6 +118,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                         .signInWithEmailAndPassword(
                                             email: profile.email!,
                                             password: profile.password!);
+                                    // refresh token to get latest custom claims for rules/UI
+                                    await FirebaseAuth.instance.currentUser
+                                        ?.getIdToken(true);
                                     if (!context.mounted) return;
                                     formKey.currentState!.reset();
                                     Fluttertoast.showToast(

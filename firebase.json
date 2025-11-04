@@ -3,5 +3,9 @@
     "source": "functions",
     "runtime": "nodejs18",
     "platform": "gcfv2"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }

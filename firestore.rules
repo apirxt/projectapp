@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hostActive(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+             get(/databases/$(database)/documents/users/$(uid)).data.hostStatus == "active" &&
+             request.time < get(/databases/$(database)/documents/users/$(uid)).data.hostActiveUntil;
+    }
+
+    function canHost() {
+      // ต้องมี claim และต้องยังไม่หมดอายุจากเอกสารผู้ใช้
+      return isSignedIn() && request.auth.token.canHostParking == true && hostActive(request.auth.uid);
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && ownerId == request.auth.uid;
+    }
+
+    // ตรวจสอบว่าเจ้าของประกาศยัง active อยู่หรือไม่ เพื่อใช้ควบคุมการอ่านให้ "หายทันที" เมื่อหมดอายุ
+    function ownerHostActive(ownerId) {
+      return ownerId != null &&
+             exists(/databases/$(database)/documents/users/$(ownerId)) &&
+             get(/databases/$(database)/documents/users/$(ownerId)).data.hostStatus == "active" &&
+             request.time < get(/databases/$(database)/documents/users/$(ownerId)).data.hostActiveUntil;
+    }
+
+    // เอกสารหลักที่จอดรถ
+    match /parking_slots/{slotId} {
+  // อ่านได้เฉพาะกรณีที่เจ้าของประกาศยัง active อยู่เท่านั้น -> จะหายทันทีเมื่อหมดเวลา
+  allow read: if isSignedIn() && ownerHostActive(resource.data.ownerId);
+
+  // สร้างได้เมื่อมีสิทธิ์ canHostParking และยังไม่หมดอายุ และ ownerId = uid ของผู้ใช้
+      allow create: if canHost() && request.resource.data.ownerId == request.auth.uid;
+
+  // แก้ไขได้เฉพาะเจ้าของที่มีสิทธิ์ (ยังไม่หมดอายุ) และห้ามเปลี่ยน ownerId
+      allow update: if canHost()
+                    && isOwner(resource.data.ownerId)
+                    && request.resource.data.ownerId == resource.data.ownerId;
+
+  // ลบได้เฉพาะเจ้าของที่มีสิทธิ์ (ยังไม่หมดอายุ)
+      allow delete: if canHost() && isOwner(resource.data.ownerId);
+
+      // ซับคอลเล็กชันรีวิว
+      match /reviews/{reviewId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.resource.data.keys().hasOnly(['userId','rating','comment','timestamp'])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 1
+          && request.resource.data.rating <= 5;
+
+        allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      }
+    }
+
+    // สถานะผู้ใช้ (อ่านเฉพาะของตนเอง)
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      // การเขียนปรับสถานะทำโดย Cloud Functions (Admin SDK) จึงไม่ต้องเปิดสิทธิ์เขียนจาก client
+    }
+  }
+}

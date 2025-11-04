@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ProjectApp Admin</title>
+    <title>ProjectApp – Admin</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
-      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+      .card { border: 1px solid #ddd; padding: 12px; border-radius: 6px; margin-bottom: 16px; background: #fff; }
       .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       table { width: 100%; border-collapse: collapse; }
       th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
@@ -49,19 +49,40 @@
             <th>ชื่อ</th>
             <th>UID</th>
             <th>สิทธิ์</th>
+            <th>ปล่อยเช่า</th>
+            <th>สถานะปล่อยเช่า</th>
+            <th>หมดอายุ</th>
             <th>สถานะ</th>
             <th>จัดการ</th>
+            <th>รหัสผ่าน</th>
           </tr>
         </thead>
         <tbody id="users"></tbody>
       </table>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js"></script>
+    <div id="hostRequests" class="card" style="display:none;">
+      <div class="row" style="justify-content: space-between; align-items:center;">
+        <strong>คำขอปล่อยเช่าที่จอด</strong>
+        <div class="row">
+          <button id="btnReqRefresh">รีเฟรช</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>อีเมล</th>
+            <th>ชื่อ</th>
+            <th>UID</th>
+            <th>วันที่ขอ</th>
+            <th>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody id="requests"></tbody>
+      </table>
+    </div>
 
+    <!-- Firebase SDKs (module imports used in app.js) -->
     <script type="module" src="./app.js"></script>
   </body>
   </html>

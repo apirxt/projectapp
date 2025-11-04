@@ -93,16 +93,29 @@ class _MyMemberState extends State<MyMember> {
                         ),
                       ),
                       trailing: isOwner
-                          ? IconButton(
-                              icon: const Icon(Icons.edit),
-                              tooltip: 'แก้ไขข้อมูล',
-                              onPressed: () async {
-                                await showDialog(
-                                  context: context,
-                                  builder: (ctx) =>
-                                      _buildEditDialog(ctx, docSnap.id, data),
-                                );
-                              },
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  tooltip: 'แก้ไขข้อมูล',
+                                  onPressed: () async {
+                                    await showDialog(
+                                      context: context,
+                                      builder: (ctx) => _buildEditDialog(
+                                          ctx, docSnap.id, data),
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: 'ลบประกาศ',
+                                  onPressed: () async {
+                                    await _confirmAndDelete(
+                                        context, docSnap.id, data);
+                                  },
+                                ),
+                              ],
                             )
                           : null,
                       onTap: () {
@@ -137,10 +150,75 @@ class _MyMemberState extends State<MyMember> {
     );
   }
 
+  Future<void> _confirmAndDelete(
+      BuildContext context, String docId, Map<String, dynamic> data) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ยืนยันการลบ'),
+        content: const Text(
+            'คุณต้องการลบประกาศนี้หรือไม่? การลบไม่สามารถย้อนกลับได้'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ยกเลิก'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // พยายามลบรูปทั้งหมดที่เคยผูกกับประกาศนี้ก่อน (ลบทุกรูปของประกาศนี้เท่านั้น)
+      final paths =
+          ((data['image_paths'] as List?)?.map((e) => e.toString()).toSet()) ??
+              <String>{};
+      final imageUrl = data['image_url'] as String?;
+      // ลบจาก URL ล่าสุดด้วย (เผื่อยังไม่มีใน paths)
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        try {
+          final ref = FirebaseStorage.instance.refFromURL(imageUrl);
+          await ref.delete();
+        } catch (_) {}
+      }
+      for (final p in paths) {
+        try {
+          final ref = FirebaseStorage.instance.ref(p);
+          await ref.delete();
+        } catch (_) {}
+      }
+
+      // ลบเอกสาร Firestore หลังจากจัดการรูปแล้ว
+      await FirebaseFirestore.instance
+          .collection('parking_slots')
+          .doc(docId)
+          .delete();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ลบประกาศเรียบร้อย')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ลบประกาศล้มเหลว: $e')),
+        );
+      }
+    }
+  }
+
   Widget _buildAddDialog(BuildContext context) {
     // Local variables to manage state within the dialog
     String localVehicleType = vehicleType;
     String? localImageUrlInDialog; // hold uploaded image url until save
+    final List<String> localImagePathsInDialog =
+        <String>[]; // keep storage paths for deletion later
 
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setDialogState) {
@@ -273,6 +351,12 @@ class _MyMemberState extends State<MyMember> {
 
                               setDialogState(() {
                                 localImageUrlInDialog = imageUrl;
+                                // record storage path for later deletion when post removed
+                                if (!localImagePathsInDialog
+                                    .contains(storageRef.fullPath)) {
+                                  localImagePathsInDialog
+                                      .add(storageRef.fullPath);
+                                }
                               });
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -375,6 +459,8 @@ class _MyMemberState extends State<MyMember> {
                           detailsController.text, // Save additional details
                       if (localImageUrlInDialog != null)
                         'image_url': localImageUrlInDialog,
+                      if (localImagePathsInDialog.isNotEmpty)
+                        'image_paths': localImagePathsInDialog,
                       'location': selectedLocation != null
                           ? GeoPoint(selectedLocation!.latitude,
                               selectedLocation!.longitude)
@@ -441,6 +527,10 @@ class _MyMemberState extends State<MyMember> {
     LatLng? localSelectedLocation =
         gp != null ? LatLng(gp.latitude, gp.longitude) : null;
     String? localImageUrl = data['image_url'] as String?;
+    final List<String> originalImagePaths =
+        (data['image_paths'] as List?)?.map((e) => e.toString()).toList() ??
+            <String>[];
+    final List<String> localImagePaths = List<String>.from(originalImagePaths);
     String? localNameError;
     bool busy = false;
 
@@ -565,6 +655,10 @@ class _MyMemberState extends State<MyMember> {
                               final url = await uploadTask.ref.getDownloadURL();
                               setDialogState(() {
                                 localImageUrl = url;
+                                if (!localImagePaths
+                                    .contains(storageRef.fullPath)) {
+                                  localImagePaths.add(storageRef.fullPath);
+                                }
                               });
                             }
                           } catch (e) {
@@ -655,6 +749,14 @@ class _MyMemberState extends State<MyMember> {
                         };
                         if (localImageUrl != null) {
                           update['image_url'] = localImageUrl;
+                        }
+                        // add new paths (if any) without duplicates
+                        final List<String> newPaths = localImagePaths
+                            .where((p) => !originalImagePaths.contains(p))
+                            .toList();
+                        if (newPaths.isNotEmpty) {
+                          update['image_paths'] =
+                              FieldValue.arrayUnion(newPaths);
                         }
                         if (localSelectedLocation != null) {
                           update['location'] = GeoPoint(

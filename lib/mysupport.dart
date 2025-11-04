@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:projectapp/screen/account_profile.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MySupport extends StatefulWidget {
   const MySupport({super.key});
@@ -10,6 +14,81 @@ class MySupport extends StatefulWidget {
 }
 
 class _MySupportState extends State<MySupport> {
+  String? _hostStatus; // none | payment_pending | active | expired | rejected
+  Timestamp? _hostActiveUntil;
+  bool _loadingStatus = false;
+  Timer? _tick;
+  Duration _remaining = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenHostStatus();
+  }
+
+  void _listenHostStatus() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _loadingStatus = true);
+    FirebaseFirestore.instance.collection('users').doc(uid).snapshots().listen(
+        (snap) {
+      final v = snap.data();
+      setState(() {
+        _hostStatus =
+            (v != null ? (v['hostStatus'] as String?) : null) ?? 'none';
+        _hostActiveUntil =
+            v != null ? v['hostActiveUntil'] as Timestamp? : null;
+        _setupCountdown();
+        _loadingStatus = false;
+      });
+    }, onError: (_) {
+      setState(() => _loadingStatus = false);
+    });
+  }
+
+  void _setupCountdown() {
+    _tick?.cancel();
+    if (_hostStatus == 'active' && _hostActiveUntil != null) {
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        final now = DateTime.now();
+        final end = _hostActiveUntil!.toDate();
+        final diff = end.difference(now);
+        if (diff.isNegative) {
+          _tick?.cancel();
+          setState(() => _remaining = Duration.zero);
+        } else {
+          setState(() => _remaining = diff);
+        }
+      });
+      // fresh claims just in case
+      FirebaseAuth.instance.currentUser?.getIdToken(true);
+    } else {
+      _remaining = Duration.zero;
+    }
+  }
+
+  Future<void> _startRegistration() async {
+    try {
+      final callable =
+          FirebaseFunctions.instance.httpsCallable('createHostRegistration');
+      final res = await callable.call();
+      final url = Uri.parse(res.data['url'] as String);
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        throw Exception('ไม่สามารถเปิดหน้า Checkout ได้');
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'เปิดหน้า Checkout แล้ว ถ้าชำระสำเร็จระบบจะเปิดสิทธิ์อัตโนมัติ')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -46,6 +125,72 @@ class _MySupportState extends State<MySupport> {
                 );
                 if (mounted) setState(() {}); // refresh after return
               },
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          // Host permission section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('สิทธิ์ปล่อยเช่าที่จอดรถ',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _loadingStatus
+                              ? 'กำลังโหลดสถานะ…'
+                              : () {
+                                  switch (_hostStatus) {
+                                    case 'active':
+                                      final mm = _remaining.inMinutes
+                                          .remainder(60)
+                                          .toString()
+                                          .padLeft(2, '0');
+                                      final ss = _remaining.inSeconds
+                                          .remainder(60)
+                                          .toString()
+                                          .padLeft(2, '0');
+                                      return 'สถานะ: ได้รับสิทธิ์แล้ว (เหลือเวลา $mm:$ss นาที)';
+                                    case 'payment_pending':
+                                      return 'สถานะ: รอชำระเงิน';
+                                    case 'rejected':
+                                      return 'สถานะ: ถูกปฏิเสธ (สามารถส่งคำขอใหม่)';
+                                    default:
+                                      return 'สถานะ: ยังไม่ได้ลงทะเบียน';
+                                  }
+                                }(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (!_loadingStatus &&
+                          (_hostStatus == null ||
+                              _hostStatus == 'none' ||
+                              _hostStatus == 'expired' ||
+                              _hostStatus == 'rejected'))
+                        ElevatedButton(
+                          onPressed: _startRegistration,
+                          child: const Text('ลงทะเบียน (100 บาท)'),
+                        ),
+                      if (!_loadingStatus && _hostStatus == 'payment_pending')
+                        ElevatedButton(
+                          onPressed: _startRegistration,
+                          child: const Text('ไปชำระเงิน'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'หลังชำระเงินสำเร็จ ระบบจะเปิดสิทธิ์อัตโนมัติ และหมดอายุใน 5 นาที'),
+                ],
+              ),
             ),
           ),
 
