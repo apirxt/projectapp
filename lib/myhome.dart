@@ -83,19 +83,7 @@ class _MyHomeState extends State<MyHome> {
                 ),
               ),
             ),
-            if (_radiusMeters != null)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.radar, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                        'กรองระยะทาง: ${_radiusMeters! >= 1000 ? '${(_radiusMeters! / 1000).toStringAsFixed(1)} กม.' : '${_radiusMeters!.toStringAsFixed(0)} ม.'}')
-                  ],
-                ),
-              ),
+            // ซ่อนข้อความสรุประยะทางที่กำลังกรอง ตามคำขอของผู้ใช้
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -375,12 +363,12 @@ class _MyHomeState extends State<MyHome> {
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                      'ระยะทางตามเส้นทาง: ${_formatDistance(routeMeters.toDouble())}'),
+                      'ระยะทางโดยประมาณ: ${_formatDistance(routeMeters.toDouble())}'),
                 )
               else if (straight != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text('ระยะทางประมาณ: ${_formatDistance(straight)}'),
+                  child: Text('ระยะทางโดยประมาณ: ${_formatDistance(straight)}'),
                 ),
               const SizedBox(height: 4),
               // Rating summary (avg and count)

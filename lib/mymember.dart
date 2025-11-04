@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
 class MyMember extends StatefulWidget {
@@ -25,6 +26,8 @@ class _MyMemberState extends State<MyMember> {
   final TextEditingController timeController = TextEditingController();
   final TextEditingController detailsController =
       TextEditingController(); // Add a new TextEditingController for additional details
+  final TextEditingController cctvUrlController =
+      TextEditingController(); // URL กล้องวงจรปิด
   String vehicleType = '';
   bool _isImagePickerActive = false; // Add a flag to track ImagePicker state
   String? nameError; // Add a variable to store the error message
@@ -356,6 +359,14 @@ class _MyMemberState extends State<MyMember> {
                       labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
                 ),
                 TextField(
+                  controller: cctvUrlController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL กล้องวงจรปิด',
+                    hintText: 'เช่น http://... หรือ rtsp://...',
+                  ),
+                  keyboardType: TextInputType.url,
+                ),
+                TextField(
                   controller: detailsController,
                   decoration: const InputDecoration(
                     labelText: 'รายละเอียดเพิ่มเติม',
@@ -510,6 +521,7 @@ class _MyMemberState extends State<MyMember> {
                       'service_time': timeController.text,
                       'details':
                           detailsController.text, // Save additional details
+                      'cctv_url': cctvUrlController.text.trim(),
                       if (localImageUrlInDialog != null)
                         'image_url': localImageUrlInDialog,
                       if (localImagePathsInDialog.isNotEmpty)
@@ -535,6 +547,7 @@ class _MyMemberState extends State<MyMember> {
                     timeController.clear();
                     detailsController
                         .clear(); // Clear the additional details controller
+                    cctvUrlController.clear();
                     vehicleType = '';
                     selectedLocation = null; // Clear the selected location
                   } catch (e) {
@@ -574,6 +587,7 @@ class _MyMemberState extends State<MyMember> {
     final dateCtl = TextEditingController(text: data['service_date'] ?? '');
     final timeCtl = TextEditingController(text: data['service_time'] ?? '');
     final detailsCtl = TextEditingController(text: data['details'] ?? '');
+    final cctvUrlCtl = TextEditingController(text: data['cctv_url'] ?? '');
 
     String localVehicleType = (data['type'] ?? '').toString();
     GeoPoint? gp = data['location'] as GeoPoint?;
@@ -674,6 +688,14 @@ class _MyMemberState extends State<MyMember> {
                   controller: timeCtl,
                   decoration: const InputDecoration(
                       labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
+                ),
+                TextField(
+                  controller: cctvUrlCtl,
+                  decoration: const InputDecoration(
+                    labelText: 'URL กล้องวงจรปิด',
+                    hintText: 'เช่น http://... หรือ rtsp://...',
+                  ),
+                  keyboardType: TextInputType.url,
                 ),
                 TextField(
                   controller: detailsCtl,
@@ -805,6 +827,7 @@ class _MyMemberState extends State<MyMember> {
                           'service_date': dateCtl.text,
                           'service_time': timeCtl.text,
                           'details': detailsCtl.text,
+                          'cctv_url': cctvUrlCtl.text.trim(),
                         };
                         if (localImageUrl != null) {
                           update['image_url'] = localImageUrl;
@@ -860,6 +883,7 @@ class ParkingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final GeoPoint? location = data['location'] as GeoPoint?;
+    final String cctvUrl = (data['cctv_url'] ?? '').toString();
 
     return Scaffold(
       appBar: AppBar(
@@ -904,6 +928,38 @@ class ParkingDetailScreen extends StatelessWidget {
               Text(
                   'เวลาที่เปิดให้บริการ: ${data['service_time'] ?? 'ไม่มีข้อมูล'}'),
               const SizedBox(height: 20),
+              if (cctvUrl.isNotEmpty) ...[
+                const Text(
+                  'กล้องวงจรปิด (CCTV):',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final uri = Uri.parse(cctvUrl);
+                      if (!await launchUrl(uri,
+                          mode: LaunchMode.externalApplication)) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('ไม่สามารถเปิดลิงก์กล้องได้')),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('ลิงก์ไม่ถูกต้อง: $e')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.videocam),
+                  label: const Text('เปิดกล้องวงจรปิด'),
+                ),
+                const SizedBox(height: 20),
+              ],
               if (location != null) ...[
                 const Text(
                   'ตำแหน่งที่จอดรถ:',
