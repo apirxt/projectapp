@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, getIdTokenResult } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, getIdTokenResult, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 
 // TODO: เติมค่า config ของโปรเจกต์คุณจาก Firebase Console (Project settings > General > Your apps > Web app)
@@ -32,9 +32,11 @@ const functions = getFunctions(app, "us-central1");
 
 const $ = (id) => document.getElementById(id);
 const usersTbody = $("users");
+const requestsTbody = $("requests");
 const adminOnly = $("adminOnly");
 const notAdmin = $("notAdmin");
 const me = $("me");
+const hostRequestsCard = $("hostRequests");
 
 let pageTokens = [null];
 let currentPage = 0;
@@ -44,15 +46,30 @@ function renderUsers(items) {
   for (const u of items) {
     const tr = document.createElement("tr");
     const isAdmin = Boolean(u.customClaims?.isAdmin);
+    const canHost = Boolean(u.customClaims?.canHostParking);
+    const hostStatus = u.hostStatus || "-";
+    const expStr = u.hostActiveUntil ? new Date(u.hostActiveUntil).toLocaleString() : "-";
     tr.innerHTML = `
       <td>${u.email ?? "-"}</td>
       <td>${u.displayName ?? "-"}</td>
       <td style="font-family:monospace">${u.uid}</td>
       <td>${isAdmin ? "Admin" : "User"}</td>
+      <td>${canHost ? "ปล่อยเช่าได้" : "หาเช่าอย่างเดียว"}</td>
+      <td>${hostStatus}</td>
+      <td>${expStr}</td>
       <td>${u.disabled ? "ปิดการใช้งาน" : "ใช้งานได้"}</td>
       <td>
         <button data-act="admin" data-uid="${u.uid}" data-val="${!isAdmin}">${isAdmin ? "ลบสิทธิ์แอดมิน" : "ตั้งเป็นแอดมิน"}</button>
         <button data-act="disable" data-uid="${u.uid}" data-val="${!u.disabled}">${u.disabled ? "เปิดใช้งาน" : "ปิดใช้งาน"}</button>
+        <button data-act="host" data-uid="${u.uid}" data-val="${!canHost}">${canHost ? "ปลดสิทธิ์ปล่อยเช่า" : "ให้สิทธิ์ปล่อยเช่า"}</button>
+        <button data-act="extend" data-uid="${u.uid}">ต่ออายุ +5 นาที</button>
+      </td>
+      <td>
+        ${u.email ? `<button data-act="pwReset" data-email="${u.email}">ส่งอีเมลรีเซ็ต</button>` : `<span style="color:#888">-</span>`}
+        <div class="row" style="margin-top:6px; gap:6px">
+          <input id="pw-${u.uid}" type="password" placeholder="รหัสชั่วคราว" style="max-width:150px" />
+          <button data-act="pwTemp" data-uid="${u.uid}">ตั้งค่า</button>
+        </div>
       </td>
     `;
     usersTbody.appendChild(tr);
@@ -61,7 +78,7 @@ function renderUsers(items) {
 
 async function loadUsers() {
   const pageToken = pageTokens[currentPage] || null;
-  const listUsers = httpsCallable(functions, "listUsers");
+  const listUsers = httpsCallable(functions, "listUsersWithHost");
   const { data } = await listUsers({ pageToken, maxResults: 50 });
   renderUsers(data.users);
   if (data.nextPageToken) {
@@ -85,6 +102,25 @@ usersTbody.addEventListener("click", async (e) => {
     } else if (act === "disable") {
       const setUserDisabled = httpsCallable(functions, "setUserDisabled");
       await setUserDisabled({ uid, disabled: val });
+    } else if (act === "host") {
+      const setUserHostPermission = httpsCallable(functions, "setUserHostPermission");
+      await setUserHostPermission({ uid, canHost: val });
+    } else if (act === "extend") {
+      const extendHostPermission = httpsCallable(functions, "extendHostPermission");
+      await extendHostPermission({ uid, minutes: 5 });
+    } else if (act === "pwReset") {
+      const email = btn.getAttribute("data-email");
+      if (!email) return alert("ไม่มีอีเมล");
+      await sendPasswordResetEmail(auth, email);
+      alert("ส่งอีเมลรีเซ็ตรหัสผ่านแล้ว");
+    } else if (act === "pwTemp") {
+      const input = document.getElementById(`pw-${uid}`);
+      const password = (input?.value || "").trim();
+      if (password.length < 6) return alert("รหัสผ่านอย่างน้อย 6 ตัวอักษร");
+      const setTempPassword = httpsCallable(functions, "setTempPassword");
+      await setTempPassword({ uid, password });
+      input.value = "";
+      alert("ตั้งรหัสชั่วคราวเรียบร้อย");
     }
     await loadUsers();
   } catch (err) {
@@ -106,6 +142,49 @@ $("btnPrev").addEventListener("click", async () => {
 
 $("btnRefresh").addEventListener("click", async () => {
   await loadUsers();
+});
+
+async function loadRequests() {
+  const listHostRequests = httpsCallable(functions, "listHostRequests");
+  const { data } = await listHostRequests({ limit: 100 });
+  requestsTbody.innerHTML = "";
+  for (const r of data.requests) {
+    const tr = document.createElement("tr");
+    const ts = r.requestedAt ? new Date(r.requestedAt).toLocaleString() : "-";
+    tr.innerHTML = `
+      <td>${r.email ?? "-"}</td>
+      <td>${r.displayName ?? "-"}</td>
+      <td style="font-family:monospace">${r.uid}</td>
+      <td>${ts}</td>
+      <td>
+        <button data-act="approve" data-uid="${r.uid}">อนุมัติ</button>
+        <button data-act="reject" data-uid="${r.uid}">ปฏิเสธ</button>
+      </td>
+    `;
+    requestsTbody.appendChild(tr);
+  }
+}
+
+requestsTbody.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const uid = btn.getAttribute("data-uid");
+  const act = btn.getAttribute("data-act");
+  try {
+    const decide = httpsCallable(functions, "decideHostRequest");
+    if (act === "approve") {
+      await decide({ uid, approve: true });
+    } else if (act === "reject") {
+      await decide({ uid, approve: false });
+    }
+    await loadRequests();
+  } catch (err) {
+    alert(err.message || err);
+  }
+});
+
+$("btnReqRefresh").addEventListener("click", async () => {
+  await loadRequests();
 });
 
 $("btnSignIn").addEventListener("click", async () => {
@@ -145,11 +224,14 @@ onAuthStateChanged(auth, async (user) => {
   const isAdmin = Boolean(tokenResult.claims?.isAdmin);
   if (isAdmin) {
     adminOnly.style.display = "block";
+    hostRequestsCard.style.display = "block";
     notAdmin.style.display = "none";
     currentPage = 0; pageTokens = [null];
     await loadUsers();
+    await loadRequests();
   } else {
     adminOnly.style.display = "none";
+    hostRequestsCard.style.display = "none";
     notAdmin.style.display = "flex";
   }
 });
