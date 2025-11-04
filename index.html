@@ -4,17 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ProjectApp – Admin</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
-      .card { border: 1px solid #ddd; padding: 12px; border-radius: 6px; margin-bottom: 16px; background: #fff; }
-      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
-      .danger { color: #b00020; }
-      button { cursor: pointer; }
-      #adminOnly { display: none; }
-      #notAdmin { display: none; }
-    </style>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <h2>ProjectApp – Admin</h2>
@@ -34,7 +24,7 @@
     </div>
 
     <div id="adminOnly" class="card">
-      <div class="row" style="justify-content: space-between;">
+  <div class="row row-between">
         <strong>จัดการผู้ใช้</strong>
         <div class="row">
           <button id="btnRefresh">รีเฟรช</button>
@@ -61,8 +51,8 @@
       </table>
     </div>
 
-    <div id="hostRequests" class="card" style="display:none;">
-      <div class="row" style="justify-content: space-between; align-items:center;">
+    <div id="hostRequests" class="card hidden">
+      <div class="row row-between">
         <strong>คำขอปล่อยเช่าที่จอด</strong>
         <div class="row">
           <button id="btnReqRefresh">รีเฟรช</button>
