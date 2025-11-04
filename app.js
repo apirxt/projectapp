@@ -49,26 +49,31 @@ function renderUsers(items) {
     const canHost = Boolean(u.customClaims?.canHostParking);
     const hostStatus = u.hostStatus || "-";
     const expStr = u.hostActiveUntil ? new Date(u.hostActiveUntil).toLocaleString() : "-";
+    const roleBadge = isAdmin ? `<span class="badge badge-admin">Admin</span>` : `<span class="badge badge-user">User</span>`;
+    const hostBadge = canHost ? `<span class="badge badge-host">ปล่อยเช่าได้</span>` : `<span class="badge badge-nohost">หาเช่าอย่างเดียว</span>`;
+    const activeBadge = u.disabled ? `<span class="badge badge-disabled">ปิดการใช้งาน</span>` : `<span class="badge badge-host">ใช้งานได้</span>`;
     tr.innerHTML = `
       <td>${u.email ?? "-"}</td>
       <td>${u.displayName ?? "-"}</td>
       <td style="font-family:monospace">${u.uid}</td>
-      <td>${isAdmin ? "Admin" : "User"}</td>
-      <td>${canHost ? "ปล่อยเช่าได้" : "หาเช่าอย่างเดียว"}</td>
+      <td>${roleBadge}</td>
+      <td>${hostBadge}</td>
       <td>${hostStatus}</td>
       <td>${expStr}</td>
-      <td>${u.disabled ? "ปิดการใช้งาน" : "ใช้งานได้"}</td>
+      <td>${activeBadge}</td>
       <td>
-        <button data-act="admin" data-uid="${u.uid}" data-val="${!isAdmin}">${isAdmin ? "ลบสิทธิ์แอดมิน" : "ตั้งเป็นแอดมิน"}</button>
-        <button data-act="disable" data-uid="${u.uid}" data-val="${!u.disabled}">${u.disabled ? "เปิดใช้งาน" : "ปิดใช้งาน"}</button>
-        <button data-act="host" data-uid="${u.uid}" data-val="${!canHost}">${canHost ? "ปลดสิทธิ์ปล่อยเช่า" : "ให้สิทธิ์ปล่อยเช่า"}</button>
-        <button data-act="extend" data-uid="${u.uid}">ต่ออายุ +5 นาที</button>
+        <div class="row">
+          <button class="btn btn-outline btn-small" data-act="admin" data-uid="${u.uid}" data-val="${!isAdmin}">${isAdmin ? "ลบสิทธิ์แอดมิน" : "ตั้งเป็นแอดมิน"}</button>
+          <button class="btn btn-outline btn-small" data-act="disable" data-uid="${u.uid}" data-val="${!u.disabled}">${u.disabled ? "เปิดใช้งาน" : "ปิดใช้งาน"}</button>
+          <button class="btn btn-outline btn-small" data-act="host" data-uid="${u.uid}" data-val="${!canHost}">${canHost ? "ปลดสิทธิ์ปล่อยเช่า" : "ให้สิทธิ์ปล่อยเช่า"}</button>
+          <button class="btn btn-primary btn-small" data-act="extend" data-uid="${u.uid}">ต่ออายุ +5 นาที</button>
+        </div>
       </td>
       <td>
-        ${u.email ? `<button data-act="pwReset" data-email="${u.email}">ส่งอีเมลรีเซ็ต</button>` : `<span style="color:#888">-</span>`}
+        ${u.email ? `<button class="btn btn-outline btn-small" data-act="pwReset" data-email="${u.email}">ส่งอีเมลรีเซ็ต</button>` : `<span class="muted">-</span>`}
         <div class="row" style="margin-top:6px; gap:6px">
           <input id="pw-${u.uid}" type="password" placeholder="รหัสชั่วคราว" style="max-width:150px" />
-          <button data-act="pwTemp" data-uid="${u.uid}">ตั้งค่า</button>
+          <button class="btn btn-outline btn-small" data-act="pwTemp" data-uid="${u.uid}">ตั้งค่า</button>
         </div>
       </td>
     `;
@@ -224,11 +229,13 @@ onAuthStateChanged(auth, async (user) => {
   const isAdmin = Boolean(tokenResult.claims?.isAdmin);
   if (isAdmin) {
     adminOnly.style.display = "block";
-    hostRequestsCard.style.display = "block";
+    // ซ่อนบัตรคำขอปล่อยเช่า ตามนโยบายปัจจุบัน (ยังคงโค้ดไว้ แต่ไม่แสดงผล)
+    hostRequestsCard.style.display = "none";
     notAdmin.style.display = "none";
     currentPage = 0; pageTokens = [null];
     await loadUsers();
-    await loadRequests();
+    // ไม่โหลดรายการคำขอ เพื่อไม่เรียกใช้งานฟังก์ชันส่วนนี้
+    // await loadRequests();
   } else {
     adminOnly.style.display = "none";
     hostRequestsCard.style.display = "none";
