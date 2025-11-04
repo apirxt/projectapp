@@ -118,21 +118,23 @@ class _ParkingDetailState extends State<ParkingDetail> {
                     onPressed: () async {
                       try {
                         final uri = Uri.parse(cctvUrl);
-                        if (!await launchUrl(uri,
-                            mode: LaunchMode.externalApplication)) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('ไม่สามารถเปิดลิงก์กล้องได้')),
-                            );
-                          }
-                        }
-                      } catch (e) {
-                        if (mounted) {
+                        final ok = await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                        if (!context.mounted)
+                          return; // Guard context after await
+                        if (!ok) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('ลิงก์ไม่ถูกต้อง: $e')),
+                            const SnackBar(
+                                content: Text('ไม่สามารถเปิดลิงก์กล้องได้')),
                           );
                         }
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('ลิงก์ไม่ถูกต้อง: $e')),
+                        );
                       }
                     },
                     icon: const Icon(Icons.videocam),
@@ -299,16 +301,15 @@ class _ParkingDetailState extends State<ParkingDetail> {
           .doc(widget.docId)
           .collection('reviews');
       await ref.add(review);
-
+      if (!mounted) return; // Guard State methods like setState
+      if (!context.mounted) return; // Guard BuildContext usages
       _commentController.clear();
       setState(() => _selectedStars = 0);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ส่งรีวิวเรียบร้อย')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ส่งรีวิวเรียบร้อย')),
+      );
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('ไม่สามารถส่งรีวิว: $e')),
         );

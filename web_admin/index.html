@@ -7,19 +7,20 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div class="container">
     <h2>ProjectApp – Admin</h2>
 
     <div id="authCard" class="card">
       <div class="row">
-        <input id="email" placeholder="อีเมลผู้ดูแล" />
-        <input id="password" type="password" placeholder="รหัสผ่าน" />
-        <button id="btnSignIn">เข้าสู่ระบบ</button>
-        <button id="btnSignOut">ออกจากระบบ</button>
+        <input id="email" class="input" placeholder="อีเมลผู้ดูแล" />
+        <input id="password" class="input" type="password" placeholder="รหัสผ่าน" />
+        <button id="btnSignIn" class="btn btn-primary">เข้าสู่ระบบ</button>
+        <button id="btnSignOut" class="btn btn-outline">ออกจากระบบ</button>
       </div>
-      <div class="row"><span id="me"></span></div>
+      <div class="row"><span id="me" class="muted"></span></div>
       <div id="notAdmin" class="row">
         <span class="danger">บัญชีนี้ยังไม่เป็นผู้ดูแลระบบ</span>
-        <button id="btnBootstrap">ฉันคือผู้ดูแลคนแรก</button>
+        <button id="btnBootstrap" class="btn btn-outline">ฉันคือผู้ดูแลคนแรก</button>
       </div>
     </div>
 
@@ -27,12 +28,13 @@
   <div class="row row-between">
         <strong>จัดการผู้ใช้</strong>
         <div class="row">
-          <button id="btnRefresh">รีเฟรช</button>
-          <button id="btnPrev">ก่อนหน้า</button>
-          <button id="btnNext">ถัดไป</button>
+          <button id="btnRefresh" class="btn">รีเฟรช</button>
+          <button id="btnPrev" class="btn">ก่อนหน้า</button>
+          <button id="btnNext" class="btn">ถัดไป</button>
         </div>
       </div>
-      <table>
+      <div class="table-wrap">
+      <table class="table">
         <thead>
           <tr>
             <th>อีเมล</th>
@@ -49,16 +51,18 @@
         </thead>
         <tbody id="users"></tbody>
       </table>
+      </div>
     </div>
 
     <div id="hostRequests" class="card hidden">
       <div class="row row-between">
         <strong>คำขอปล่อยเช่าที่จอด</strong>
         <div class="row">
-          <button id="btnReqRefresh">รีเฟรช</button>
+          <button id="btnReqRefresh" class="btn">รีเฟรช</button>
         </div>
       </div>
-      <table>
+      <div class="table-wrap">
+      <table class="table">
         <thead>
           <tr>
             <th>อีเมล</th>
@@ -70,9 +74,11 @@
         </thead>
         <tbody id="requests"></tbody>
       </table>
+      </div>
     </div>
 
     <!-- Firebase SDKs (module imports used in app.js) -->
     <script type="module" src="./app.js"></script>
+    </div>
   </body>
   </html>

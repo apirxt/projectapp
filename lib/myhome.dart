@@ -435,9 +435,9 @@ class _MyHomeState extends State<MyHome> {
     Position? seed = await Geolocator.getLastKnownPosition();
     try {
       final fresh = await Geolocator.getCurrentPosition(
-        timeLimit: const Duration(seconds: 10),
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.bestForNavigation,
+          timeLimit: Duration(seconds: 10),
         ),
       );
       // เลือกตำแหน่งที่มี accuracy ต่ำกว่า (ดีกว่า)
