@@ -87,7 +87,7 @@ async function loadUsers() {
   const { data } = await listUsers({ pageToken, maxResults: 50 });
   renderUsers(data.users);
   if (data.nextPageToken) {
-    // store next token if navigating forward
+    // เก็บ token ของหน้าถัดไปไว้ เผื่อกดเลื่อนไปข้างหน้า
     pageTokens[currentPage + 1] = data.nextPageToken;
   } else {
     pageTokens[currentPage + 1] = null;
@@ -210,7 +210,7 @@ $("btnBootstrap").addEventListener("click", async () => {
   try {
     const grantSelf = httpsCallable(functions, "grantSelfAdminIfNone");
     await grantSelf();
-    // refresh id token to get new claims
+    // รีเฟรช id token เพื่อดึง claims ล่าสุด
     await auth.currentUser?.getIdToken(true);
   } catch (err) {
     alert(err.message || err);

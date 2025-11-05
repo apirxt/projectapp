@@ -9,7 +9,7 @@ const Stripe = require("stripe");
 let legacyConfig = {};
 try { legacyConfig = require("firebase-functions").config(); } catch (_) { legacyConfig = {}; }
 
-// Secrets (recommended for Gen2)
+// คีย์ลับสำหรับโปรเจกต์ (แนะนำให้เก็บใน Secret Manager บน Gen2)
 const STRIPE_SECRET = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const GOOGLE_MAPS_API_KEY = defineSecret("GOOGLE_MAPS_API_KEY");
@@ -20,12 +20,10 @@ try {
   admin.initializeApp();
 }
 
-// Gen2: set global defaults
+// ตั้งค่าพื้นฐานของฟังก์ชัน (โซนทำงานเริ่มต้นของ Gen2)
 setGlobalOptions({ region: "us-central1" });
 
-/**
- * Helper: ensure caller is an admin (v2 request)
- */
+// ฟังก์ชันช่วยเช็กว่าคนเรียกเป็นแอดมินหรือไม่ (สำหรับ v2 request)
 function assertAdmin(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "ต้องเข้าสู่ระบบก่อน");
@@ -36,9 +34,7 @@ function assertAdmin(request) {
   }
 }
 
-/**
- * Helper: write admin audit log
- */
+// ฟังก์ชันช่วยบันทึก log การทำงานของแอดมิน (เก็บหลักฐานว่าใครทำอะไรเมื่อไหร่)
 async function logAdminAction(action, request, details = {}) {
   try {
     const db = admin.firestore();
@@ -53,14 +49,12 @@ async function logAdminAction(action, request, details = {}) {
       details,
     });
   } catch (_) {
-    // do not block main flow if logging fails
+    // ถ้าบันทึก log ล้มเหลว ไม่ต้องหยุดงานหลัก ปล่อยผ่านไป
   }
 }
 
-/**
- * List users with pagination.
- * data: { pageToken?: string, maxResults?: number }
- */
+// ดึงรายชื่อผู้ใช้แบบแบ่งหน้า
+// data: { pageToken?: string, maxResults?: number }
 exports.listUsers = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -81,10 +75,8 @@ exports.listUsers = onCall(async (request) => {
   return { users, nextPageToken: result.pageToken || null };
 });
 
-/**
- * List users and enrich with Firestore host fields.
- * data: { pageToken?: string, maxResults?: number }
- */
+// ดึงรายชื่อผู้ใช้ พร้อมข้อมูลสถานะ Host จาก Firestore
+// data: { pageToken?: string, maxResults?: number }
 exports.listUsersWithHost = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -103,7 +95,7 @@ exports.listUsersWithHost = onCall(async (request) => {
     },
   }));
 
-  // Fetch Firestore docs in batch
+  // ดึงข้อมูลเอกสาร Firestore ทีละชุดเพื่อความเร็ว
   const db = admin.firestore();
   const refs = baseUsers.map((u) => db.collection("users").doc(u.uid));
   const snaps = await db.getAll(...refs);
@@ -119,10 +111,8 @@ exports.listUsersWithHost = onCall(async (request) => {
   return { users, nextPageToken: result.pageToken || null };
 });
 
-/**
- * Set or remove admin role.
- * data: { uid: string, isAdmin: boolean }
- */
+// ตั้งค่าหรือยกเลิกสิทธิ์แอดมิน
+// data: { uid: string, isAdmin: boolean }
 exports.setUserAdmin = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -137,10 +127,8 @@ exports.setUserAdmin = onCall(async (request) => {
   return { ok: true };
 });
 
-/**
- * Enable/Disable user account
- * data: { uid: string, disabled: boolean }
- */
+// เปิด/ปิดการใช้งานบัญชีผู้ใช้
+// data: { uid: string, disabled: boolean }
 exports.setUserDisabled = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -152,14 +140,12 @@ exports.setUserDisabled = onCall(async (request) => {
   return { ok: true };
 });
 
-/**
- * Bootstrap: allow the first admin to grant themselves admin if no admin exists.
- */
+// เปิดสิทธิ์แอดมินให้ตัวเอง ถ้าในระบบยังไม่มีแอดมินคนไหนเลย (ใช้ตอนเริ่มต้นระบบ)
 exports.grantSelfAdminIfNone = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "ต้องเข้าสู่ระบบก่อน");
   }
-  // Check if any current admin exists
+  // เช็กว่ามีแอดมินอยู่แล้วหรือยัง
   let token = undefined;
   let found = false;
   do {
@@ -180,10 +166,8 @@ exports.grantSelfAdminIfNone = onCall(async (request) => {
   return { ok: true };
 });
 
-/**
- * Set a temporary password for a user (admin only).
- * data: { uid: string, password: string }
- */
+// ตั้งรหัสผ่านชั่วคราวให้ผู้ใช้ (เฉพาะแอดมิน)
+// data: { uid: string, password: string }
 exports.setTempPassword = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -198,10 +182,8 @@ exports.setTempPassword = onCall(async (request) => {
   return { ok: true, uid };
 });
 
-/**
- * User requests host permission to publish parking listings.
- * Creates/updates users/{uid} with hostStatus='requested'.
- */
+// ผู้ใช้ยื่นคำขอเป็น Host เพื่อปล่อยเช่าที่จอดรถ
+// จะสร้าง/อัปเดตเอกสาร users/{uid} ให้มี hostStatus='requested'
 exports.requestHostRole = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "ต้องเข้าสู่ระบบก่อน");
@@ -219,7 +201,7 @@ exports.requestHostRole = onCall(async (request) => {
   if (status === "approved") {
     throw new HttpsError("failed-precondition", "คุณได้รับสิทธิ์แล้ว");
   }
-  // For convenience store email/name for admin view
+  // เก็บอีเมล/ชื่อไว้ในเอกสาร เพื่อให้แอดมินดูสะดวกในหน้าเว็บ
   let email = request.auth.token?.email || null;
   let displayName = request.auth.token?.name || null;
   try {
@@ -240,10 +222,8 @@ exports.requestHostRole = onCall(async (request) => {
   return { status: "requested" };
 });
 
-/**
- * Admin: list host requests (users with hostStatus='requested')
- * data: { limit?: number }
- */
+// ฝั่งแอดมิน: ดึงลิสต์คำขอเป็น Host (users ที่ hostStatus='requested')
+// data: { limit?: number }
 exports.listHostRequests = onCall(async (request) => {
   assertAdmin(request);
   const db = admin.firestore();
@@ -266,10 +246,8 @@ exports.listHostRequests = onCall(async (request) => {
   return { requests: items };
 });
 
-/**
- * Admin: approve or reject a host request.
- * data: { uid: string, approve: boolean, note?: string }
- */
+// ฝั่งแอดมิน: อนุมัติ/ปฏิเสธ คำขอเป็น Host
+// data: { uid: string, approve: boolean, note?: string }
 exports.decideHostRequest = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -303,7 +281,7 @@ exports.decideHostRequest = onCall(async (request) => {
     await logAdminAction("approveHost", request, { targetUid: uid, note });
     return { uid, status: "approved" };
   } else {
-    // revoke claim if existed
+  // ถ้ามีสิทธิ์ค้างอยู่ ให้ลบสิทธิ์ก่อน
     if (claims.canHostParking) {
       delete claims.canHostParking;
       await admin.auth().setCustomUserClaims(uid, claims);
@@ -325,10 +303,8 @@ exports.decideHostRequest = onCall(async (request) => {
   }
 });
 
-  /**
-   * Admin: directly set or revoke user's host permission.
-   * data: { uid: string, canHost: boolean, note?: string }
-   */
+  // ฝั่งแอดมิน: ให้หรือยกเลิกสิทธิ์ Host โดยตรง
+  // data: { uid: string, canHost: boolean, note?: string }
   exports.setUserHostPermission = onCall(async (request) => {
     assertAdmin(request);
     const data = request.data || {};
@@ -382,10 +358,8 @@ exports.decideHostRequest = onCall(async (request) => {
     }
   });
 
-/**
- * Admin: extend host permission to now + 5 minutes (resets window)
- * data: { uid: string, minutes?: number }
- */
+// ฝั่งแอดมิน: ต่ออายุสิทธิ์ Host เพิ่มจากตอนนี้ + N นาที (ค่าเริ่มต้น 5 นาที)
+// data: { uid: string, minutes?: number }
 exports.extendHostPermission = onCall(async (request) => {
   assertAdmin(request);
   const uid = request.data?.uid;
@@ -415,10 +389,10 @@ exports.extendHostPermission = onCall(async (request) => {
   return { uid, hostActiveUntil: newUntil.getTime() };
 });
 
-// -------------------- Stripe based host registration --------------------
+// ส่วนชำระเงินด้วย Stripe สำหรับการสมัครเป็น Host
 
 function getStripe() {
-  // Prefer Secret Manager, then various env/config fallbacks
+  // พยายามใช้คีย์จาก Secret Manager ก่อน ถ้าไม่มีค่อยลองจาก env/config อื่นๆ
   const key =
     STRIPE_SECRET.value() ||
     process.env.STRIPE_SECRET ||
@@ -426,14 +400,12 @@ function getStripe() {
     process.env.stripe_secret ||
     legacyConfig?.stripe?.secret;
   if (!key) return null;
-  // Use account's default API version to avoid mismatch issues
+  // ใช้ API version ตามค่าเริ่มต้นของแอคเคานต์ เพื่อลดปัญหาเวอร์ชันไม่ตรงกัน
   return new Stripe(key);
 }
 
-/**
- * Create a Stripe Checkout session for host registration (THB 1.00)
- * Returns { url }
- */
+// สร้าง Stripe Checkout สำหรับลงทะเบียน Host (ตัวอย่างคิดราคา 100 บาท)
+// คืนค่า: { url }
 exports.createHostRegistration = onCall({ secrets: [STRIPE_SECRET] }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "ต้องเข้าสู่ระบบก่อน");
   const stripe = getStripe();
@@ -444,7 +416,7 @@ exports.createHostRegistration = onCall({ secrets: [STRIPE_SECRET] }, async (req
   const FieldValue = admin.firestore.FieldValue;
   const ref = db.collection("users").doc(uid);
 
-  // Create Checkout Session
+  // สร้าง Checkout Session
   let session;
   try {
     session = await stripe.checkout.sessions.create({
@@ -490,9 +462,7 @@ exports.createHostRegistration = onCall({ secrets: [STRIPE_SECRET] }, async (req
   return { url: session.url };
 });
 
-/**
- * Stripe webhook: Activate host after successful payment, set 5-minute window.
- */
+// Stripe webhook: เปิดสิทธิ์ Host หลังชำระเงินสำเร็จ และกำหนดเวลาใช้งาน 5 นาที
 exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
   const stripe = getStripe();
   const webhookSecret = STRIPE_WEBHOOK_SECRET.value() || process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret || legacyConfig?.stripe?.webhook_secret;
@@ -517,8 +487,8 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECR
       const FieldValue = admin.firestore.FieldValue;
       const ref = db.collection("users").doc(uid);
 
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // now + 5 minutes
-      // set claim and status
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // ตอนนี้ + 5 นาที
+  // ตั้งสิทธิ์และสถานะ
       try {
         const user = await admin.auth().getUser(uid);
         const claims = user.customClaims || {};
@@ -544,7 +514,7 @@ exports.stripeWebhook = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECR
   res.json({ received: true });
 });
 
-// -------------------- Helpers: Storage cleanup --------------------
+// ตัวช่วย: จัดการไฟล์ใน Storage
 function getDefaultBucket() {
   try {
     const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : null;
@@ -556,7 +526,7 @@ function getDefaultBucket() {
 }
 
 function extractPathFromImageUrl(url) {
-  // Works for https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?...
+  // รองรับรูปแบบ URL: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?...
   try {
     const marker = '/o/';
     const i = url.indexOf(marker);
@@ -584,13 +554,11 @@ async function deleteImagesForDocData(data) {
   for (const p of paths) {
     try {
       await bucket.file(p).delete({ ignoreNotFound: true });
-    } catch (_) { /* continue */ }
+  } catch (_) { /* ลบไม่ได้ก็ข้ามไป */ }
   }
 }
 
-/**
- * Scheduled job: revoke expired host permissions every minute.
- */
+// งานตามเวลา (ทุกนาที): ยกเลิกสิทธิ์ Host ที่หมดอายุ
 exports.revokeExpiredHosts = onSchedule("* * * * *", async () => {
   const db = admin.firestore();
   const now = new Date();
@@ -618,7 +586,7 @@ exports.revokeExpiredHosts = onSchedule("* * * * *", async () => {
     );
     await logAdminAction("auto.revokeExpiredHost", null, { uid });
 
-    // Also remove all listings for this user and their images
+  // ลบประกาศทั้งหมดของผู้ใช้รายนี้พร้อมรูปภาพ
     try {
       const listings = await db
         .collection('parking_slots')
@@ -631,14 +599,14 @@ exports.revokeExpiredHosts = onSchedule("* * * * *", async () => {
         await d.ref.delete();
         await logAdminAction('auto.deleteListingOnExpiry', null, { uid, slotId: d.id });
       }
-      // mark as purged to skip repeated work later
+  // ตีธงว่าล้างแล้ว เพื่อลดการทำงานซ้ำในรอบถัดไป
       await doc.ref.set({ listingsPurged: true }, { merge: true });
     } catch (e) {
       await logAdminAction('auto.deleteListingOnExpiry.error', null, { uid, error: String(e) });
     }
   }
 
-  // Also backfill: users already 'expired' but not yet purged
+  // เก็บตก: ผู้ใช้ที่หมดอายุแล้ว แต่ยังไม่ได้ล้างประกาศ
   const qsExpired = await db
     .collection('users')
     .where('hostStatus', '==', 'expired')
@@ -648,7 +616,7 @@ exports.revokeExpiredHosts = onSchedule("* * * * *", async () => {
   for (const doc of qsExpired.docs) {
     const uid = doc.id;
     const v = doc.data() || {};
-    if (v.listingsPurged === true) continue; // already done
+  if (v.listingsPurged === true) continue; // ทำไปแล้ว ข้ามได้
     try {
       const listings = await db
         .collection('parking_slots')
@@ -668,7 +636,7 @@ exports.revokeExpiredHosts = onSchedule("* * * * *", async () => {
   }
 });
 
-// Debug endpoint: show presence (not values) of Stripe env/config for troubleshooting
+// จุดตรวจสอบ (debug): เช็กว่ามีการตั้งค่า Stripe ไว้หรือไม่ (ไม่แสดงค่าจริง)
 exports.stripeEnv = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
   const env = process.env;
   res.json({
@@ -685,10 +653,8 @@ exports.stripeEnv = onRequest({ secrets: [STRIPE_SECRET, STRIPE_WEBHOOK_SECRET] 
   });
 });
 
-/**
- * Admin: delete a Storage image by path or URL.
- * data: { path?: string, url?: string }
- */
+// ฝั่งแอดมิน: ลบรูปใน Storage โดยระบุ path หรือ URL
+// data: { path?: string, url?: string }
 exports.adminDeleteImage = onCall(async (request) => {
   assertAdmin(request);
   const data = request.data || {};
@@ -712,16 +678,14 @@ exports.adminDeleteImage = onCall(async (request) => {
   }
 });
 
-/**
- * Route distance matrix using Google Distance Matrix API.
- * callable: routeMatrix
- * data: {
- *   origin: { lat: number, lng: number },
- *   destinations: Array<{ lat: number, lng: number }>,
- *   mode?: 'driving' | 'walking' | 'bicycling' | 'transit'
- * }
- * Returns: { distances: Array<{ meters: number|null, seconds: number|null }>, status: string }
- */
+// คำนวณระยะทางตามเส้นทาง (Driving/Walking ฯลฯ) ด้วย Google Distance Matrix API
+// callable: routeMatrix
+// data: {
+//   origin: { lat: number, lng: number },
+//   destinations: Array<{ lat: number, lng: number }>,
+//   mode?: 'driving' | 'walking' | 'bicycling' | 'transit'
+// }
+// ส่งกลับ: { distances: Array<{ meters: number|null, seconds: number|null }>, status: string }
 exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบก่อน');
@@ -737,7 +701,7 @@ exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request)
   if (destinations.length === 0) {
     return { distances: [], status: 'ok' };
   }
-  // Cap to 25 destinations per request to stay within common quotas
+  // จำกัดทีละ 25 จุดหมาย ต่อ 1 คำขอ ตามข้อจำกัดของ API
   const capped = destinations.slice(0, 25);
 
   const key = GOOGLE_MAPS_API_KEY.value() || process.env.GOOGLE_MAPS_API_KEY || legacyConfig?.google?.maps_api_key;
@@ -746,7 +710,7 @@ exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request)
   }
 
   const originsParam = `${origin.lat},${origin.lng}`;
-  const destParam = capped.map(d => `${d.lat},${d.lng}`).join('|');
+  const destParam = capped.map((d) => `${d.lat},${d.lng}`).join('|');
   const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(originsParam)}&destinations=${encodeURIComponent(destParam)}&mode=${encodeURIComponent(mode)}&units=metric&key=${encodeURIComponent(key)}`;
 
   let json;
@@ -767,7 +731,7 @@ exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request)
 
   const row = Array.isArray(json.rows) && json.rows[0];
   const elements = Array.isArray(row?.elements) ? row.elements : [];
-  const out = elements.map(el => {
+  const out = elements.map((el) => {
     if (!el || el.status !== 'OK') return { meters: null, seconds: null };
     const meters = el.distance?.value ?? null;
     const seconds = el.duration?.value ?? null;

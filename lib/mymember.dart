@@ -25,14 +25,14 @@ class _MyMemberState extends State<MyMember> {
   final TextEditingController dateController = TextEditingController();
   final TextEditingController timeController = TextEditingController();
   final TextEditingController detailsController =
-      TextEditingController(); // Add a new TextEditingController for additional details
+      TextEditingController(); // ตัวควบคุมข้อความสำหรับรายละเอียดเพิ่มเติม
   final TextEditingController cctvUrlController =
       TextEditingController(); // URL กล้องวงจรปิด
   String vehicleType = '';
-  bool _isImagePickerActive = false; // Add a flag to track ImagePicker state
-  String? nameError; // Add a variable to store the error message
-  LatLng? selectedLocation; // Add a variable to store the selected location
-  bool _isAdmin = false; // Admin can manage all listings
+  bool _isImagePickerActive = false; // ธงสำหรับกันกดซ้อนขณะเลือกภาพ
+  String? nameError; // เก็บข้อความแจ้งเตือนข้อผิดพลาดของชื่อ
+  LatLng? selectedLocation; // เก็บพิกัดที่ผู้ใช้เลือก
+  bool _isAdmin = false; // แอดมินสามารถจัดการประกาศทั้งหมด
 
   @override
   void initState() {
@@ -69,7 +69,7 @@ class _MyMemberState extends State<MyMember> {
         _isAdmin = isAdmin;
       });
     } catch (_) {
-      // ignore
+      // ข้ามได้
     }
   }
 
@@ -264,11 +264,12 @@ class _MyMemberState extends State<MyMember> {
   }
 
   Widget _buildAddDialog(BuildContext context) {
-    // Local variables to manage state within the dialog
+    // ตัวแปรเฉพาะภายใน dialog สำหรับจัดการสถานะ
     String localVehicleType = vehicleType;
-    String? localImageUrlInDialog; // hold uploaded image url until save
+    String?
+        localImageUrlInDialog; // เก็บ URL รูปที่อัปโหลดไว้ชั่วคราวจนกว่าจะกดบันทึก
     final List<String> localImagePathsInDialog =
-        <String>[]; // keep storage paths for deletion later
+        <String>[]; // เก็บ path ของรูปใน Storage เพื่อไว้ลบภายหลัง
 
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setDialogState) {
@@ -383,7 +384,7 @@ class _MyMemberState extends State<MyMember> {
                   ),
                 ElevatedButton(
                   onPressed: _isImagePickerActive
-                      ? null // Disable button if ImagePicker is active
+                      ? null // ปิดปุ่มชั่วคราวระหว่างเลือกภาพ
                       : () async {
                           setState(() {
                             _isImagePickerActive = true;
@@ -409,13 +410,13 @@ class _MyMemberState extends State<MyMember> {
                                 }),
                               );
 
-                              // Get the download URL and keep locally until Save
+                              // ดึงลิงก์สำหรับดาวน์โหลด แล้วเก็บไว้ชั่วคราวจนกว่าจะบันทึก
                               final imageUrl =
                                   await uploadTask.ref.getDownloadURL();
 
                               setDialogState(() {
                                 localImageUrlInDialog = imageUrl;
-                                // record storage path for later deletion when post removed
+                                // บันทึก path ของรูปไว้ เพื่อลบเมื่อมีการลบประกาศ
                                 if (!localImagePathsInDialog
                                     .contains(storageRef.fullPath)) {
                                   localImagePathsInDialog
@@ -429,7 +430,7 @@ class _MyMemberState extends State<MyMember> {
                                 );
                               }
                             } catch (e) {
-                              // Show an error message if something goes wrong
+                              // แจ้งเตือนเมื่อเกิดข้อผิดพลาด
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -545,13 +546,12 @@ class _MyMemberState extends State<MyMember> {
                     bikePriceController.clear();
                     dateController.clear();
                     timeController.clear();
-                    detailsController
-                        .clear(); // Clear the additional details controller
+                    detailsController.clear(); // เคลียร์ช่องรายละเอียดเพิ่มเติม
                     cctvUrlController.clear();
                     vehicleType = '';
-                    selectedLocation = null; // Clear the selected location
+                    selectedLocation = null; // ล้างค่าพิกัดที่เลือก
                   } catch (e) {
-                    // Show an error message if something goes wrong
+                    // แจ้งเตือนเมื่อเกิดข้อผิดพลาด
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
@@ -574,7 +574,7 @@ class _MyMemberState extends State<MyMember> {
 
   Widget _buildEditDialog(
       BuildContext context, String docId, Map<String, dynamic> data) {
-    // Local state and controllers initialized from existing data
+    // สถานะและ controller ที่ตั้งค่าเริ่มจากข้อมูลเดิม
     final nameCtl = TextEditingController(text: data['name'] ?? '');
     final carCountCtl =
         TextEditingController(text: (data['car_count']?.toString() ?? ''));
@@ -832,7 +832,7 @@ class _MyMemberState extends State<MyMember> {
                         if (localImageUrl != null) {
                           update['image_url'] = localImageUrl;
                         }
-                        // add new paths (if any) without duplicates
+                        // เพิ่ม path ที่เพิ่มใหม่ (ถ้ามี) โดยไม่ซ้ำกับของเดิม
                         final List<String> newPaths = localImagePaths
                             .where((p) => !originalImagePaths.contains(p))
                             .toList();
@@ -1018,13 +1018,13 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _selectedLocation;
 
   static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(13.7563, 100.5018), // Bangkok coordinates
+    target: LatLng(13.7563, 100.5018), // พิกัดกรุงเทพฯ
     zoom: 11,
   );
 
   void _addMarker(LatLng position) {
     setState(() {
-      _markers.clear(); // Remove existing markers
+      _markers.clear(); // ลบหมุดเดิมก่อน
       _selectedLocation = position;
       _markers.add(
         Marker(
@@ -1118,7 +1118,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () {
-                      // Return the selected location to the previous screen
+                      // ส่งค่าตำแหน่งที่เลือกกลับไปหน้าก่อนหน้า
                       Navigator.pop(context, _selectedLocation);
                     },
                     child: const Text('ยืนยันตำแหน่ง'),

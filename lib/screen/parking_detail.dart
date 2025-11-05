@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 class ParkingDetail extends StatefulWidget {
   final Map<String, dynamic> parkingData;
-  final String docId; // Firestore document id for this parking slot
+  final String docId; // id เอกสาร Firestore ของที่จอดคันนี้
 
   const ParkingDetail(
       {super.key, required this.parkingData, required this.docId});
@@ -122,8 +122,9 @@ class _ParkingDetailState extends State<ParkingDetail> {
                           uri,
                           mode: LaunchMode.externalApplication,
                         );
-                        if (!context.mounted)
-                          return; // Guard context after await
+                        if (!context.mounted) {
+                          return; // กันการใช้ context ถ้า widget ถูกถอดหลัง await
+                        }
                         if (!ok) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -131,7 +132,9 @@ class _ParkingDetailState extends State<ParkingDetail> {
                           );
                         }
                       } catch (e) {
-                        if (!context.mounted) return;
+                        if (!context.mounted) {
+                          return;
+                        }
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('ลิงก์ไม่ถูกต้อง: $e')),
                         );
@@ -151,7 +154,7 @@ class _ParkingDetailState extends State<ParkingDetail> {
               const SizedBox(height: 5),
               Text(parkingData['details'] ?? 'ไม่มีข้อมูลเพิ่มเติม'),
               const SizedBox(height: 20),
-              // Rating summary (average and count)
+              // สรุปคะแนน (ค่าเฉลี่ยและจำนวนรีวิว)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('parking_slots')
@@ -225,7 +228,7 @@ class _ParkingDetailState extends State<ParkingDetail> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              // Star rating input
+              // ส่วนให้คะแนนด้วยดาว
               Row(
                 children: List.generate(5, (i) {
                   final starIndex = i + 1;
@@ -301,8 +304,12 @@ class _ParkingDetailState extends State<ParkingDetail> {
           .doc(widget.docId)
           .collection('reviews');
       await ref.add(review);
-      if (!mounted) return; // Guard State methods like setState
-      if (!context.mounted) return; // Guard BuildContext usages
+      if (!mounted) {
+        return; // กันการเรียกเมธอดของ State (เช่น setState) ถ้า widget ถูกถอดแล้ว
+      }
+      if (!context.mounted) {
+        return; // กันการใช้งาน BuildContext ถ้า widget ถูกถอดแล้ว
+      }
       _commentController.clear();
       setState(() => _selectedStars = 0);
       ScaffoldMessenger.of(context).showSnackBar(

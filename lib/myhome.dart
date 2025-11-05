@@ -15,7 +15,7 @@ class _MyHomeState extends State<MyHome> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   Position? _currentPosition;
-  double? _radiusMeters; // null = no radius filter
+  double? _radiusMeters; // null = ไม่กรองตามระยะทาง
   bool _isGettingLocation = false;
 
   @override
@@ -105,7 +105,7 @@ class _MyHomeState extends State<MyHome> {
                   final name = data['name']?.toString().toLowerCase() ?? '';
                   final matchesText = name.contains(_searchQuery);
 
-                  // compute distance if possible
+                  // คำนวณระยะทางเส้นตรงถ้าทำได้
                   double? distance;
                   final GeoPoint? gp = data['location'] as GeoPoint?;
                   if (_currentPosition != null && gp != null) {
@@ -117,7 +117,7 @@ class _MyHomeState extends State<MyHome> {
                     );
                   }
 
-                  // apply radius filter only when both radius and current position exist
+                  // ใช้ตัวกรองระยะทางเมื่อมีทั้งรัศมีและตำแหน่งปัจจุบัน
                   bool passRadius = true;
                   if (_radiusMeters != null && _currentPosition != null) {
                     passRadius =
@@ -133,7 +133,7 @@ class _MyHomeState extends State<MyHome> {
                   return const Center(child: Text('ยังไม่มีข้อมูลที่จอดรถ'));
                 }
 
-                // If we know user's position, fetch route distances and sort by them
+                // ถ้ามีตำแหน่งผู้ใช้ ให้ดึงระยะทางตามเส้นทางจริงและเรียงตามค่านั้น
                 if (_currentPosition != null) {
                   return FutureBuilder<List<int?>>(
                     future: _fetchRouteDistances(items),
@@ -159,7 +159,7 @@ class _MyHomeState extends State<MyHome> {
                           return ra.compareTo(rb);
                         });
                       } else {
-                        // fallback: sort by straight-line distance
+                        // ทางเลือกสำรอง: เรียงตามระยะทางเส้นตรง
                         listToRender.sort((a, b) {
                           final da =
                               (a['distance'] as double?) ?? double.infinity;
@@ -184,7 +184,7 @@ class _MyHomeState extends State<MyHome> {
                   );
                 }
 
-                // No current position: normal list sorted by name or unchanged
+                // ไม่มีตำแหน่งปัจจุบัน: แสดงรายการตามปกติ (ไม่เรียงตามระยะ)
                 return _buildParkingList(items, preferRoute: false);
               },
             ),
@@ -210,7 +210,7 @@ class _MyHomeState extends State<MyHome> {
       _isGettingLocation = true;
     });
 
-    // Ensure location permission & current position
+    // ตรวจสอบสิทธิ์และดึงตำแหน่งปัจจุบัน
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -371,7 +371,7 @@ class _MyHomeState extends State<MyHome> {
                   child: Text('ระยะทางโดยประมาณ: ${_formatDistance(straight)}'),
                 ),
               const SizedBox(height: 4),
-              // Rating summary (avg and count)
+              // สรุปคะแนน (ค่าเฉลี่ยและจำนวนรีวิว)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('parking_slots')
@@ -445,7 +445,7 @@ class _MyHomeState extends State<MyHome> {
       return seed;
     } catch (_) {
       if (seed != null) return seed;
-      // fallback
+      // ทางเลือกสำรองหากเรียกตำแหน่งแบบละเอียดไม่สำเร็จ
       return await Geolocator.getCurrentPosition(
         locationSettings:
             const LocationSettings(accuracy: LocationAccuracy.high),
@@ -472,7 +472,7 @@ class _MyHomeState extends State<MyHome> {
       final results = List<int?>.filled(items.length, null);
       final callable = FirebaseFunctions.instance.httpsCallable('routeMatrix');
 
-      // chunk into batches of 25 destinations to respect API caps
+      // แบ่งปลายทางเป็นชุดละไม่เกิน 25 จุด ตามข้อจำกัดของ API
       const int chunk = 25;
       for (int i = 0; i < dests.length; i += chunk) {
         final batch = dests.sublist(
