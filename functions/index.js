@@ -678,6 +678,50 @@ exports.adminDeleteImage = onCall(async (request) => {
   }
 });
 
+// ฝั่งแอดมิน: ลบที่จอด (เอกสาร) พร้อม subcollection ทั้งหมดแบบ recursive
+// data: { slotId: string }
+exports.deleteParkingSlot = onCall(async (request) => {
+  assertAdmin(request);
+  const slotId = request.data?.slotId;
+  if (!slotId || typeof slotId !== 'string') {
+    throw new HttpsError('invalid-argument', 'ต้องระบุ slotId เป็นสตริง');
+  }
+
+  const db = admin.firestore();
+  const rootRef = db.collection('parking_slots').doc(slotId);
+
+  // ส่วนตัวช่วยลบแบบ recursive (เดินลบลูกทั้งหมดก่อน แล้วค่อยลบตัวเอง)
+  async function deleteRecursively(ref) {
+    const subcols = await ref.listCollections();
+    for (const col of subcols) {
+      const snap = await col.get();
+      for (const doc of snap.docs) {
+        await deleteRecursively(doc.ref);
+        await doc.ref.delete();
+      }
+    }
+  }
+
+  try {
+    // ลบรูปที่ผูกอยู่กับเอกสารนี้ (ถ้ามี)
+    const snap = await rootRef.get();
+    if (snap.exists) {
+      const data = snap.data() || {};
+      await deleteImagesForDocData(data);
+    }
+
+    // ลบลูกทั้งหมด
+    await deleteRecursively(rootRef);
+    // ลบตัวเอกสารแม่ (ไม่ว่าจะมีอยู่จริงหรือไม่ การลบจะผ่านได้)
+    await rootRef.delete().catch(() => {});
+
+    await logAdminAction('deleteParkingSlot', request, { slotId });
+    return { ok: true, slotId };
+  } catch (e) {
+    throw new HttpsError('internal', String(e?.message || e));
+  }
+});
+
 // คำนวณระยะทางตามเส้นทาง (Driving/Walking ฯลฯ) ด้วย Google Distance Matrix API
 // callable: routeMatrix
 // data: {
