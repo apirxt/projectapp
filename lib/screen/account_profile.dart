@@ -1,3 +1,4 @@
+//ส่วนนำเข้าแพ็กเกจ
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:projectapp/screen/home.dart';
 
+//ส่วนหน้าจัดการโปรไฟล์ผู้ใช้ (ชื่อ อีเมล โทรศัพท์ รูปโปรไฟล์)
 class AccountProfileScreen extends StatefulWidget {
   const AccountProfileScreen({super.key});
 
@@ -14,6 +16,7 @@ class AccountProfileScreen extends StatefulWidget {
 }
 
 class _AccountProfileScreenState extends State<AccountProfileScreen> {
+  //ส่วนตัวควบคุมข้อมูลโปรไฟล์
   final _displayNameCtl = TextEditingController();
   final _emailCtl = TextEditingController();
   final _phoneCtl = TextEditingController();
@@ -24,9 +27,10 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _hydrate();
+  _hydrate(); //ส่วนโหลดข้อมูลผู้ใช้ปัจจุบันใส่ในช่องกรอก
   }
 
+  //ส่วนดึงข้อมูลจาก user ใส่ controller
   void _hydrate() {
     _displayNameCtl.text = user?.displayName ?? '';
     _emailCtl.text = user?.email ?? '';
@@ -48,6 +52,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          //ส่วนภาพโปรไฟล์และปุ่มเปลี่ยนรูป
           Center(
             child: Stack(
               children: [
@@ -73,6 +78,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          //ส่วนช่องกรอกชื่อ
           TextField(
             controller: _displayNameCtl,
             decoration: const InputDecoration(
@@ -81,6 +87,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             ),
           ),
           const Divider(height: 32),
+          //ส่วนช่องกรอกอีเมล
           TextField(
             controller: _emailCtl,
             keyboardType: TextInputType.emailAddress,
@@ -90,6 +97,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             ),
           ),
           const Divider(height: 32),
+          //ส่วนช่องกรอกหมายเลขโทรศัพท์
           TextField(
             controller: _phoneCtl,
             keyboardType: TextInputType.phone,
@@ -108,16 +116,19 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              //ส่วนปุ่มบันทึกการเปลี่ยนแปลง
               ElevatedButton(
                 onPressed: _busy ? null : _saveAll,
                 child: const Text('บันทึกการเปลี่ยนแปลง'),
               ),
               const SizedBox(height: 8),
+              //ส่วนปุ่มเปลี่ยนรหัสผ่าน
               OutlinedButton(
                 onPressed: _busy ? null : _changePassword,
                 child: const Text('เปลี่ยนรหัสผ่าน'),
               ),
               const SizedBox(height: 8),
+              //ส่วนปุ่มออกจากระบบ
               TextButton(
                 onPressed: _busy ? null : _signOut,
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -243,12 +254,12 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
 
     setState(() => _busy = true);
     try {
-      // 1) display name
+  //ส่วนขั้นตอน 1: อัปเดตชื่อ (ถ้าเปลี่ยน)
       if (wantsName) {
         await user!.updateDisplayName(newName);
       }
 
-      // 2) email (verify link flow)
+  //ส่วนขั้นตอน 2: อัปเดตอีเมล (ส่งลิงก์ยืนยัน)
       if (wantsEmail) {
         try {
           await user!.verifyBeforeUpdateEmail(newEmail);
@@ -259,7 +270,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           }
         } on FirebaseAuthException catch (e) {
           if (e.code == 'requires-recent-login') {
-            // release busy for dialog flow
+            //ส่วนปล่อย busy ชั่วคราวเพื่อเข้า dialog re-auth
             if (mounted) setState(() => _busy = false);
             await _promptReauthAnd(
                 () => user!.verifyBeforeUpdateEmail(newEmail));
@@ -275,7 +286,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         }
       }
 
-      // 3) phone – interactive verify
+  //ส่วนขั้นตอน 3: อัปเดตหมายเลขโทรศัพท์ (OTP)
       if (wantsPhone) {
         String? verificationId;
         await FirebaseAuth.instance.verifyPhoneNumber(
@@ -344,7 +355,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           },
           codeAutoRetrievalTimeout: (_) {},
         );
-        // done flag is best-effort; flows may complete after callback
+  // ธง done เป็นการบอกสถานะคร่าวๆ บาง flow อาจเสร็จหลัง callback ได้
       }
 
       await user!.reload();

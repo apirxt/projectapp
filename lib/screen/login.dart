@@ -1,3 +1,4 @@
+//ส่วนนำเข้าแพ็กเกจ
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:projectapp/screen/main_screen.dart';
 
 import 'home.dart';
 
+//ส่วนหน้าล็อกอิน
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -15,6 +17,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  //ส่วนสถานะฟอร์มและข้อมูลผู้ใช้
   final formKey = GlobalKey<FormState>();
   Profile profile = Profile();
   final Future<FirebaseApp> firebase = Firebase.initializeApp();
@@ -68,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          //ส่วนช่องกรอกอีเมล
                           const Text("อีเมล", style: TextStyle(fontSize: 20)),
                           TextFormField(
                             validator: (value) {
@@ -87,6 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(
                             height: 15,
                           ),
+                          //ส่วนช่องกรอกรหัสผ่าน
                           const Text("รหัสผ่าน",
                               style: TextStyle(fontSize: 20)),
                           TextFormField(
@@ -111,6 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: const Text("เข้าสู่ระบบ",
                                   style: TextStyle(fontSize: 20)),
                               onPressed: () async {
+                                //ส่วนกระบวนการเข้าสู่ระบบ
                                 if (formKey.currentState!.validate()) {
                                   formKey.currentState!.save();
                                   try {
@@ -118,8 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                         .signInWithEmailAndPassword(
                                             email: profile.email!,
                                             password: profile.password!);
-                                    // refresh token to get latest custom claims for rules/UI
-                                    await FirebaseAuth.instance.currentUser
+                  //ส่วนรีเฟรชโทเค็นเพื่ออัปเดตสิทธิ์ (claims)
+                  await FirebaseAuth.instance.currentUser
                                         ?.getIdToken(true);
                                     if (!context.mounted) return;
                                     formKey.currentState!.reset();

@@ -283,7 +283,7 @@ class _MyMemberState extends State<MyMember> {
                   controller: nameController,
                   decoration: InputDecoration(
                     labelText: 'ตั้งชื่อที่จอดรถ',
-                    errorText: nameError, // Display error message if any
+                    errorText: nameError, // แสดงข้อความ error ถ้ามี
                   ),
                 ),
                 CheckboxListTile(
@@ -373,7 +373,7 @@ class _MyMemberState extends State<MyMember> {
                     labelText: 'รายละเอียดเพิ่มเติม',
                     hintText: 'กรอกรายละเอียดเพิ่มเติมเกี่ยวกับที่จอดรถ',
                   ),
-                  maxLines: null, // Allow multi-line input
+                  maxLines: null, // ให้พิมพ์หลายบรรทัดได้
                 ),
                 if (localImageUrlInDialog != null &&
                     localImageUrlInDialog!.isNotEmpty)
@@ -396,7 +396,7 @@ class _MyMemberState extends State<MyMember> {
 
                           if (image != null) {
                             try {
-                              // Upload image to Firebase Storage
+                              // อัปโหลดรูปไป Firebase Storage
                               final uid =
                                   FirebaseAuth.instance.currentUser?.uid;
                               final storageRef = FirebaseStorage.instance
@@ -461,7 +461,7 @@ class _MyMemberState extends State<MyMember> {
                     );
                     if (result != null) {
                       selectedLocation = result;
-                      setDialogState(() {}); // Refresh dialog state
+                      setDialogState(() {}); // รีเฟรช state ของ dialog
                     }
                   },
                   child: const Text('เลือกปักหมุดสถานที่'),
@@ -494,14 +494,14 @@ class _MyMemberState extends State<MyMember> {
                     return;
                   }
 
-                  // Check if the parking name already exists
+                  // เช็กว่ามีชื่อที่จอดซ้ำอยู่แล้วหรือไม่
                   final existingDocs = await FirebaseFirestore.instance
                       .collection('parking_slots')
                       .where('name', isEqualTo: nameController.text)
                       .get();
 
                   if (existingDocs.docs.isNotEmpty) {
-                    // Show a warning below the input field
+                    // แสดงคำเตือนใต้ช่องกรอก
                     setDialogState(() {
                       nameError = 'ชื่อที่จอดรถนี้มีอยู่แล้ว กรุณาตั้งชื่อใหม่';
                     });
@@ -521,7 +521,7 @@ class _MyMemberState extends State<MyMember> {
                       'service_date': dateController.text,
                       'service_time': timeController.text,
                       'details':
-                          detailsController.text, // Save additional details
+                          detailsController.text, // บันทึกรายละเอียดเพิ่มเติม
                       'cctv_url': cctvUrlController.text.trim(),
                       if (localImageUrlInDialog != null)
                         'image_url': localImageUrlInDialog,
@@ -535,7 +535,7 @@ class _MyMemberState extends State<MyMember> {
                       'timestamp': FieldValue.serverTimestamp(),
                     });
 
-                    // Clear the input fields and close the dialog
+                    // ล้างช่องกรอกแล้วปิด dialog
                     if (context.mounted) {
                       Navigator.pop(context);
                     }
@@ -786,7 +786,7 @@ class _MyMemberState extends State<MyMember> {
               onPressed: busy
                   ? null
                   : () async {
-                      // Basic validation
+                      // ตรวจสอบเบื้องต้น
                       if (nameCtl.text.trim().isEmpty ||
                           (carCountCtl.text.trim().isEmpty &&
                               bikeCountCtl.text.trim().isEmpty)) {
@@ -799,7 +799,7 @@ class _MyMemberState extends State<MyMember> {
 
                       setDialogState(() => busy = true);
                       try {
-                        // If name changed, ensure uniqueness
+                        // ถ้าชื่อถูกแก้ ต้องเช็กว่าไม่ซ้ำ
                         if (nameCtl.text.trim() != (data['name'] ?? '')) {
                           final dup = await FirebaseFirestore.instance
                               .collection('parking_slots')

@@ -1,3 +1,4 @@
+//ส่วนนำเข้าแพ็กเกจ
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:projectapp/model/profile.dart';
 
 import 'home.dart';
 
+//ส่วนหน้าสร้างบัญชีผู้ใช้
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -15,6 +17,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  //ส่วนสถานะฟอร์มและข้อมูลผู้สมัคร
   final formKey = GlobalKey<FormState>();
   Profile profile = Profile();
   final Future<FirebaseApp> firebase = Firebase.initializeApp();
@@ -66,6 +69,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          //ส่วนช่องกรอกชื่อผู้ใช้
                           const Text("ชื่อผู้ใช้",
                               style: TextStyle(fontSize: 20)),
                           TextFormField(
@@ -78,6 +82,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                           const SizedBox(height: 15),
+                          //ส่วนช่องกรอกอีเมล
                           const Text("อีเมล", style: TextStyle(fontSize: 20)),
                           TextFormField(
                             validator: MultiValidator([
@@ -93,6 +98,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           const SizedBox(
                             height: 15,
                           ),
+                          //ส่วนช่องกรอกรหัสผ่าน
                           const Text("รหัสผ่าน",
                               style: TextStyle(fontSize: 20)),
                           TextFormField(
@@ -111,6 +117,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               child: const Text("ลงทะเบียน",
                                   style: TextStyle(fontSize: 20)),
                               onPressed: () async {
+                                //ส่วนกระบวนการลงทะเบียน
                                 if (formKey.currentState!.validate()) {
                                   formKey.currentState!.save();
                                   try {

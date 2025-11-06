@@ -1,3 +1,4 @@
+//ส่วนนำเข้าแพ็กเกจ
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:projectapp/screen/account_profile.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+//ส่วนหน้าฟีเจอร์ Support/สิทธิ์ปล่อยเช่า
 class MySupport extends StatefulWidget {
   const MySupport({super.key});
 
@@ -14,7 +16,8 @@ class MySupport extends StatefulWidget {
 }
 
 class _MySupportState extends State<MySupport> {
-  String? _hostStatus; // none | payment_pending | active | expired | rejected
+  //ส่วนตัวแปรสถานะสิทธิ์ host และเวลาคงเหลือ
+  String? _hostStatus; // สถานะ: none | payment_pending | active | expired | rejected
   Timestamp? _hostActiveUntil;
   bool _loadingStatus = false;
   Timer? _tick;
@@ -23,9 +26,10 @@ class _MySupportState extends State<MySupport> {
   @override
   void initState() {
     super.initState();
-    _listenHostStatus();
+  _listenHostStatus(); //ส่วนเริ่มฟังสถานะจาก Firestore
   }
 
+  //ส่วนฟังสถานะ Host จาก Firestore และตั้ง countdown
   void _listenHostStatus() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -46,6 +50,7 @@ class _MySupportState extends State<MySupport> {
     });
   }
 
+  //ส่วนตั้งตัวจับเวลานับถอยหลังสิทธิ์ปล่อยเช่า
   void _setupCountdown() {
     _tick?.cancel();
     if (_hostStatus == 'active' && _hostActiveUntil != null) {
@@ -60,13 +65,14 @@ class _MySupportState extends State<MySupport> {
           setState(() => _remaining = diff);
         }
       });
-      // fresh claims just in case
+  //ส่วนรีเฟรช claims เผื่อกรณีสิทธิ์เปลี่ยนแบบเรียลไทม์
       FirebaseAuth.instance.currentUser?.getIdToken(true);
     } else {
       _remaining = Duration.zero;
     }
   }
 
+  //ส่วนเปิด Stripe Checkout สำหรับลงทะเบียนสิทธิ์ปล่อยเช่า
   Future<void> _startRegistration() async {
     try {
       final callable =
@@ -100,7 +106,7 @@ class _MySupportState extends State<MySupport> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Account summary card
+          //ส่วนบัตรสรุปบัญชีผู้ใช้
           Card(
             child: ListTile(
               contentPadding: const EdgeInsets.all(12),
@@ -123,13 +129,13 @@ class _MySupportState extends State<MySupport> {
                   MaterialPageRoute(
                       builder: (_) => const AccountProfileScreen()),
                 );
-                if (mounted) setState(() {}); // refresh after return
+                if (mounted) setState(() {}); //ส่วนรีเฟรชหลังกลับมา
               },
             ),
           ),
 
           const SizedBox(height: 16),
-          // Host permission section
+          //ส่วนสิทธิ์ปล่อยเช่า (Host Permission)
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12.0),
@@ -195,6 +201,7 @@ class _MySupportState extends State<MySupport> {
           ),
 
           const SizedBox(height: 16),
+          //ส่วนติดต่อเรา
           const Text(
             'ติดต่อเรา',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),

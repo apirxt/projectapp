@@ -1,7 +1,9 @@
+//ส่วนนำเข้าแพ็กเกจ
 import 'package:flutter/material.dart';
 import 'package:projectapp/screen/login.dart';
 import 'package:projectapp/screen/register.dart';
 
+//ส่วนหน้าแรก (ปุ่มไปลงทะเบียน/เข้าสู่ระบบ)
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
   @override
@@ -16,6 +18,7 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             children: [
               Image.asset("assets/images/logo.png"),
+              //ส่วนปุ่มไปหน้าลงทะเบียน
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -31,6 +34,7 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
               ),
+              //ส่วนปุ่มไปหน้าเข้าสู่ระบบ
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(

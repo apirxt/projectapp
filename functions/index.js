@@ -370,7 +370,7 @@ exports.extendHostPermission = onCall(async (request) => {
   const ref = db.collection("users").doc(uid);
   const newUntil = new Date(Date.now() + minutes * 60 * 1000);
 
-  // Ensure claim true
+  // ยืนยันให้ claim เป็น true เสมอ (กันกรณีค่าไม่ตรง)
   try {
     const user = await admin.auth().getUser(uid);
     const claims = user.customClaims || {};
