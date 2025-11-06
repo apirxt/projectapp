@@ -1,8 +1,9 @@
+//ส่วนนำเข้า SDK ของ Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, getIdTokenResult, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 
-// TODO: เติมค่า config ของโปรเจกต์คุณจาก Firebase Console (Project settings > General > Your apps > Web app)
+// ส่วนตั้งค่า Firebase config ของโปรเจคจาก Firebase Console (Project settings > General > Your apps > Web app)
 const firebaseConfig = {
   apiKey: "AIzaSyDfF2QMYEe_G34w8l_yJSIJdUqaNNusy_w",
     authDomain: "myloginapp-fbed0.firebaseapp.com",
@@ -13,7 +14,7 @@ const firebaseConfig = {
     measurementId: "G-0R1L1H42H4"
 };
 
-// Guard: แจ้งเตือนถ้ายังไม่ได้กรอกค่า config จริง
+// ส่วนตรวจสอบค่า config เบื้องต้น แจ้งเตือนถ้ายังไม่ได้กรอกค่า config จริง
 (() => {
   const v = firebaseConfig;
   const looksPlaceholder = !v.apiKey || v.apiKey.includes("YOUR_") || !v.projectId || String(v.projectId).includes("YOUR_");
@@ -23,13 +24,15 @@ const firebaseConfig = {
   }
 })();
 
+//ส่วนเริ่มต้นแอป Firebase และบริการหลัก
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const functions = getFunctions(app, "us-central1");
 
-// หากต้องการทดสอบกับ emulator ให้ uncomment บรรทัดด้านล่าง
+// หากต้องการทดสอบกับ emulator ให้ลบบรรทัดด้านล่าง
 // connectFunctionsEmulator(functions, "localhost", 5001);
 
+//ส่วนอ้างอิง element ใน DOM ที่ใช้บ่อย
 const $ = (id) => document.getElementById(id);
 const usersTbody = $("users");
 const requestsTbody = $("requests");
@@ -38,9 +41,11 @@ const notAdmin = $("notAdmin");
 const me = $("me");
 const hostRequestsCard = $("hostRequests");
 
+//ส่วนสถานะการแบ่งหน้า
 let pageTokens = [null];
 let currentPage = 0;
 
+//ส่วนแสดงรายการผู้ใช้ในตาราง
 function renderUsers(items) {
   usersTbody.innerHTML = "";
   for (const u of items) {
@@ -81,6 +86,7 @@ function renderUsers(items) {
   }
 }
 
+//ส่วนโหลดรายการผู้ใช้จาก Cloud Functions
 async function loadUsers() {
   const pageToken = pageTokens[currentPage] || null;
   const listUsers = httpsCallable(functions, "listUsersWithHost");
@@ -94,6 +100,7 @@ async function loadUsers() {
   }
 }
 
+//ส่วนอีเวนต์คลิกปุ่มในแถวผู้ใช้ (สิทธิ์/ปิดการใช้งาน/ต่ออายุ/รหัสผ่าน)
 usersTbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
@@ -133,22 +140,26 @@ usersTbody.addEventListener("click", async (e) => {
   }
 });
 
+//ส่วนปุ่มไปหน้าถัดไป
 $("btnNext").addEventListener("click", async () => {
   if (!pageTokens[currentPage + 1]) return;
   currentPage += 1;
   await loadUsers();
 });
 
+//ส่วนปุ่มย้อนกลับหน้าก่อน
 $("btnPrev").addEventListener("click", async () => {
   if (currentPage === 0) return;
   currentPage -= 1;
   await loadUsers();
 });
 
+//ส่วนปุ่มรีเฟรชข้อมูลผู้ใช้
 $("btnRefresh").addEventListener("click", async () => {
   await loadUsers();
 });
 
+//ส่วนโหลดคำขอสิทธิ์ Host (ซ่อนไว้ใน UI)
 async function loadRequests() {
   const listHostRequests = httpsCallable(functions, "listHostRequests");
   const { data } = await listHostRequests({ limit: 100 });
@@ -170,6 +181,7 @@ async function loadRequests() {
   }
 }
 
+//ส่วนอีเวนต์คลิกอนุมัติ/ปฏิเสธคำขอ Host
 requestsTbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
   if (!btn) return;
@@ -188,10 +200,12 @@ requestsTbody.addEventListener("click", async (e) => {
   }
 });
 
+//ส่วนปุ่มรีเฟรชคำขอ Host
 $("btnReqRefresh").addEventListener("click", async () => {
   await loadRequests();
 });
 
+//ส่วนปุ่มเข้าสู่ระบบ
 $("btnSignIn").addEventListener("click", async () => {
   try {
     const email = $("email").value.trim();
@@ -202,10 +216,12 @@ $("btnSignIn").addEventListener("click", async () => {
   }
 });
 
+//ส่วนปุ่มออกจากระบบ
 $("btnSignOut").addEventListener("click", async () => {
   await signOut(auth);
 });
 
+//ส่วนปุ่มตั้งตัวเองเป็นแอดมินคนแรก (bootstrap)
 $("btnBootstrap").addEventListener("click", async () => {
   try {
     const grantSelf = httpsCallable(functions, "grantSelfAdminIfNone");
@@ -217,6 +233,7 @@ $("btnBootstrap").addEventListener("click", async () => {
   }
 });
 
+//ส่วนเปลี่ยนสถานะการเข้าสู่ระบบและปรับ UI ตามสิทธิ์
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     me.textContent = "ยังไม่ได้เข้าสู่ระบบ";
