@@ -136,6 +136,13 @@ class _MyHomeState extends State<MyHome> {
                 decoration: InputDecoration(
                   hintText: 'ค้นหาที่จอดรถ',
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          tooltip: 'ล้าง',
+                          icon: const Icon(Icons.clear),
+                          onPressed: _clearSearch,
+                        )
+                      : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -145,28 +152,16 @@ class _MyHomeState extends State<MyHome> {
             if (_isSearchByPlace && _searchLat != null && _searchLng != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Row(
-                  children: [
-                    Chip(
-                      avatar: const Icon(Icons.place, size: 18),
-                      label: Text('โหมด: ค้นหาจากสถานที่ (≤ 1 กม.) • ' +
-                          (_searchPlaceLabel ?? '')),
-                    ),
-                    const SizedBox(width: 6),
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _isSearchByPlace = false;
-                          _searchLat = null;
-                          _searchLng = null;
-                          _searchPlaceLabel = null;
-                          _searchController.clear();
-                        });
-                      },
-                      icon: const Icon(Icons.close),
-                      label: const Text('ล้าง'),
-                    )
-                  ],
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      Chip(
+                        avatar: const Icon(Icons.place, size: 18),
+                        label: Text('ค้นหาจาก: ' + (_searchPlaceLabel ?? '')),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             // ซ่อนข้อความสรุประยะทางที่กำลังกรอง ตามคำขอของผู้ใช้
@@ -312,6 +307,18 @@ class _MyHomeState extends State<MyHome> {
         ),
       ),
     );
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    setState(() {
+      _searchController.clear();
+      _isSearchByPlace = false;
+      _searchLat = null;
+      _searchLng = null;
+      _searchPlaceLabel = null;
+      _searchQuery = '';
+    });
   }
 
   Future<void> _openRadiusPicker() async {
