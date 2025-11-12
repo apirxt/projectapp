@@ -33,6 +33,7 @@ class _MyMemberState extends State<MyMember> {
   String? nameError; // เก็บข้อความแจ้งเตือนข้อผิดพลาดของชื่อ
   LatLng? selectedLocation; // เก็บพิกัดที่ผู้ใช้เลือก
   bool _isAdmin = false; // แอดมินสามารถจัดการประกาศทั้งหมด
+  Timestamp? _hostActiveUntil; // เวลาใบอนุญาตปล่อยเช่าหมดอายุของผู้ใช้ปัจจุบัน
 
   @override
   void initState() {
@@ -73,6 +74,13 @@ class _MyMemberState extends State<MyMember> {
     }
   }
 
+  // ฟอร์แมตวันที่แบบง่าย ๆ เป็น dd/MM/yyyy HH:mm:ss (ตามเครื่องผู้ใช้)
+  String _fmtDate(DateTime dt) {
+    final d = dt.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -83,100 +91,134 @@ class _MyMemberState extends State<MyMember> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('parking_slots')
-                  .orderBy('timestamp', descending: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return const Center(child: Text('เกิดข้อผิดพลาด'));
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            // ฟังเอกสารผู้ใช้ปัจจุบันเพื่อดึงเวลาหมดอายุสิทธิ์ปล่อยเช่า
+            child: Builder(builder: (context) {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              final userStream = uid == null
+                  ? const Stream<DocumentSnapshot<Map<String, dynamic>>>.empty()
+                  : FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(uid)
+                      .snapshots();
 
-                final docs = snapshot.data!.docs;
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: userStream,
+                builder: (context, userSnap) {
+                  final userData = userSnap.data?.data();
+                  _hostActiveUntil = (userData != null
+                      ? userData['hostActiveUntil']
+                      : null) as Timestamp?;
 
-                if (docs.isEmpty) {
-                  return const Center(child: Text('ยังไม่มีข้อมูลที่จอดรถ'));
-                }
+                  // จากนั้นฟังรายการประกาศ โดยจำกัดให้เห็นเฉพาะของตัวเอง (ยกเว้นแอดมิน)
+                  final base =
+                      FirebaseFirestore.instance.collection('parking_slots');
+                  final Stream<QuerySnapshot> itemsStream = _isAdmin
+                      ? base.orderBy('timestamp', descending: false).snapshots()
+                      : base.where('ownerId', isEqualTo: uid).snapshots();
 
-                final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: itemsStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(child: Text('เกิดข้อผิดพลาด'));
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                return ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final docSnap = docs[index];
-                    final data = docSnap.data() as Map<String, dynamic>;
-                    final isOwner =
-                        (currentUid != null && data['ownerId'] == currentUid);
-                    final canManage = isOwner || _isAdmin;
-                    return ListTile(
-                      leading: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (data['type'].contains('รถยนต์'))
-                            const Icon(Icons.directions_car),
-                          if (data['type'].contains('มอเตอร์ไซค์'))
-                            const Icon(Icons.motorcycle),
-                        ],
-                      ),
-                      title: Text(
-                        data['name'] ?? 'ไม่มีชื่อ',
-                        style: TextStyle(
-                          fontSize: 20, // ขนาดตัวอักษรของชื่อที่จอดรถ
-                          fontWeight: FontWeight.bold, // ทำให้ตัวหนา
-                        ),
-                      ),
-                      subtitle: Text(
-                        'จำนวนรถยนต์: ${data['car_count'] ?? 0}\nจำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}',
-                        style: TextStyle(
-                          fontSize: 16, // ขนาดตัวอักษรของจำนวนที่จอดรถ
-                          color: const Color.fromARGB(
-                              255, 175, 175, 175), // เปลี่ยนสีของตัวอักษร
-                        ),
-                      ),
-                      trailing: canManage
-                          ? Row(
+                      final docs = snapshot.data!.docs;
+                      if (docs.isEmpty) {
+                        return const Center(
+                            child: Text('ยังไม่มีข้อมูลที่จอดรถ'));
+                      }
+
+                      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                      final DateTime? exp =
+                          _hostActiveUntil?.toDate().toLocal();
+                      final String expiryText = exp != null
+                          ? 'สิทธิ์หมดอายุ: ' + _fmtDate(exp)
+                          : 'สิทธิ์หมดอายุ: -';
+
+                      return ListView.builder(
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final docSnap = docs[index];
+                          final data = docSnap.data() as Map<String, dynamic>;
+                          final isOwner = (currentUid != null &&
+                              data['ownerId'] == currentUid);
+                          final canManage = isOwner || _isAdmin;
+                          return ListTile(
+                            leading: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit),
-                                  tooltip: 'แก้ไขข้อมูล',
-                                  onPressed: () async {
-                                    await showDialog(
-                                      context: context,
-                                      builder: (ctx) => _buildEditDialog(
-                                          ctx, docSnap.id, data),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  tooltip: 'ลบประกาศ',
-                                  onPressed: () async {
-                                    await _confirmAndDelete(
-                                        context, docSnap.id, data);
-                                  },
-                                ),
+                                if ((data['type'] ?? '')
+                                    .toString()
+                                    .contains('รถยนต์'))
+                                  const Icon(Icons.directions_car),
+                                if ((data['type'] ?? '')
+                                    .toString()
+                                    .contains('มอเตอร์ไซค์'))
+                                  const Icon(Icons.motorcycle),
                               ],
-                            )
-                          : null,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                ParkingDetailScreen(data: data),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+                            ),
+                            title: Text(
+                              data['name'] ?? 'ไม่มีชื่อ',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'จำนวนรถยนต์: ${data['car_count'] ?? 0}\nจำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}' +
+                                  (isOwner ? '\n$expiryText' : ''),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: Color.fromARGB(255, 175, 175, 175),
+                              ),
+                            ),
+                            trailing: canManage
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit),
+                                        tooltip: 'แก้ไขข้อมูล',
+                                        onPressed: () async {
+                                          await showDialog(
+                                            context: context,
+                                            builder: (ctx) => _buildEditDialog(
+                                                ctx, docSnap.id, data),
+                                          );
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline),
+                                        tooltip: 'ลบประกาศ',
+                                        onPressed: () async {
+                                          await _confirmAndDelete(
+                                              context, docSnap.id, data);
+                                        },
+                                      ),
+                                    ],
+                                  )
+                                : null,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      ParkingDetailScreen(data: data),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              );
+            }),
           ),
           Padding(
             padding: const EdgeInsets.all(8.0),
