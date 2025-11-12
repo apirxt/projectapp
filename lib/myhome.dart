@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 import 'screen/parking_detail.dart';
 
 class MyHome extends StatefulWidget {
@@ -17,6 +19,16 @@ class _MyHomeState extends State<MyHome> {
   Position? _currentPosition;
   double? _radiusMeters; // null = ไม่กรองตามระยะทาง
   bool _isGettingLocation = false;
+
+  // โหมดค้นหาจากสถานที่
+  bool _isSearchByPlace = false; // true เมื่อใช้พิกัดจากข้อความค้นหา
+  double? _searchLat;
+  double? _searchLng;
+  String? _searchPlaceLabel; // label แสดงชื่อสถานที่ที่ค้นหา
+
+  // debounce สำหรับ geocoding
+  Duration _debounceDuration = const Duration(milliseconds: 500);
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -70,8 +82,55 @@ class _MyHomeState extends State<MyHome> {
               child: TextField(
                 controller: _searchController,
                 onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value.toLowerCase();
+                  // โหมดค้นหาจากสถานที่ด้วย debounce
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(_debounceDuration, () async {
+                    final q = value.trim();
+                    if (q.isEmpty) {
+                      if (!mounted) return;
+                      setState(() {
+                        _isSearchByPlace = false;
+                        _searchLat = null;
+                        _searchLng = null;
+                        _searchPlaceLabel = null;
+                        _searchQuery = '';
+                      });
+                      return;
+                    }
+                    try {
+                      final results = await geocoding.locationFromAddress(q);
+                      if (results.isEmpty) {
+                        if (!mounted) return;
+                        setState(() {
+                          _isSearchByPlace = false;
+                          _searchLat = null;
+                          _searchLng = null;
+                          _searchPlaceLabel = null;
+                          _searchQuery = q.toLowerCase();
+                        });
+                        return;
+                      }
+                      final loc = results.first;
+                      if (!mounted) return;
+                      setState(() {
+                        _isSearchByPlace = true;
+                        _searchLat = loc.latitude;
+                        _searchLng = loc.longitude;
+                        _searchPlaceLabel = q;
+                        _radiusMeters =
+                            null; // โหมดสถานที่: ไม่ใช้ตัวเลือกระยะผู้ใช้
+                        _searchQuery = q.toLowerCase();
+                      });
+                    } catch (_) {
+                      if (!mounted) return;
+                      setState(() {
+                        _isSearchByPlace = false;
+                        _searchLat = null;
+                        _searchLng = null;
+                        _searchPlaceLabel = null;
+                        _searchQuery = q.toLowerCase();
+                      });
+                    }
                   });
                 },
                 decoration: InputDecoration(
@@ -83,6 +142,33 @@ class _MyHomeState extends State<MyHome> {
                 ),
               ),
             ),
+            if (_isSearchByPlace && _searchLat != null && _searchLng != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  children: [
+                    Chip(
+                      avatar: const Icon(Icons.place, size: 18),
+                      label: Text('โหมด: ค้นหาจากสถานที่ (≤ 1 กม.) • ' +
+                          (_searchPlaceLabel ?? '')),
+                    ),
+                    const SizedBox(width: 6),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _isSearchByPlace = false;
+                          _searchLat = null;
+                          _searchLng = null;
+                          _searchPlaceLabel = null;
+                          _searchController.clear();
+                        });
+                      },
+                      icon: const Icon(Icons.close),
+                      label: const Text('ล้าง'),
+                    )
+                  ],
+                ),
+              ),
             // ซ่อนข้อความสรุประยะทางที่กำลังกรอง ตามคำขอของผู้ใช้
             const SizedBox(height: 10),
             StreamBuilder<QuerySnapshot>(
@@ -102,24 +188,41 @@ class _MyHomeState extends State<MyHome> {
                 final List<Map<String, dynamic>> items = [];
                 for (final doc in allDocs) {
                   final data = doc.data() as Map<String, dynamic>;
+                  // ถ้าเป็นโหมดค้นหาจากสถานที่ จะไม่กรองตามชื่อประกาศ
                   final name = data['name']?.toString().toLowerCase() ?? '';
-                  final matchesText = name.contains(_searchQuery);
+                  final matchesText =
+                      _isSearchByPlace ? true : name.contains(_searchQuery);
 
                   // คำนวณระยะทางเส้นตรงถ้าทำได้
                   double? distance;
                   final GeoPoint? gp = data['location'] as GeoPoint?;
-                  if (_currentPosition != null && gp != null) {
-                    distance = Geolocator.distanceBetween(
-                      _currentPosition!.latitude,
-                      _currentPosition!.longitude,
-                      gp.latitude,
-                      gp.longitude,
-                    );
+                  if (gp != null) {
+                    if (_isSearchByPlace &&
+                        _searchLat != null &&
+                        _searchLng != null) {
+                      distance = Geolocator.distanceBetween(
+                        _searchLat!,
+                        _searchLng!,
+                        gp.latitude,
+                        gp.longitude,
+                      );
+                    } else if (_currentPosition != null) {
+                      distance = Geolocator.distanceBetween(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
+                        gp.latitude,
+                        gp.longitude,
+                      );
+                    }
                   }
 
                   // ใช้ตัวกรองระยะทางเมื่อมีทั้งรัศมีและตำแหน่งปัจจุบัน
                   bool passRadius = true;
-                  if (_radiusMeters != null && _currentPosition != null) {
+                  if (_isSearchByPlace) {
+                    // โหมดสถานที่: ล็อกที่ 1 กม.
+                    passRadius = (distance != null) && (distance <= 1000);
+                  } else if (_radiusMeters != null &&
+                      _currentPosition != null) {
                     passRadius =
                         (distance != null) && (distance <= _radiusMeters!);
                   }
@@ -134,7 +237,7 @@ class _MyHomeState extends State<MyHome> {
                 }
 
                 // ถ้ามีตำแหน่งผู้ใช้ ให้ดึงระยะทางตามเส้นทางจริงและเรียงตามค่านั้น
-                if (_currentPosition != null) {
+                if (!_isSearchByPlace && _currentPosition != null) {
                   return FutureBuilder<List<int?>>(
                     future: _fetchRouteDistances(items),
                     builder: (context, snapRoute) {
@@ -184,20 +287,26 @@ class _MyHomeState extends State<MyHome> {
                   );
                 }
 
-                // ไม่มีตำแหน่งปัจจุบัน: แสดงรายการตามปกติ (ไม่เรียงตามระยะ)
+                // โหมดค้นหาจากสถานที่ หรือไม่มีตำแหน่งปัจจุบัน: เรียงตามระยะเส้นตรงถ้ามี
+                items.sort((a, b) {
+                  final da = (a['distance'] as double?) ?? double.infinity;
+                  final db = (b['distance'] as double?) ?? double.infinity;
+                  return da.compareTo(db);
+                });
                 return _buildParkingList(items, preferRoute: false);
               },
             ),
             const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _isGettingLocation ? null : _openRadiusPicker,
-              child: _isGettingLocation
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('เลือกระยะทาง'),
-            ),
+            if (!_isSearchByPlace)
+              ElevatedButton(
+                onPressed: _isGettingLocation ? null : _openRadiusPicker,
+                child: _isGettingLocation
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('เลือกระยะทาง'),
+              ),
             const SizedBox(height: 20),
           ],
         ),

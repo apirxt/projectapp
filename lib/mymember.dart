@@ -81,6 +81,50 @@ class _MyMemberState extends State<MyMember> {
     return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
   }
 
+  // เข้ารหัส geohash แบบง่าย ใช้สำหรับบันทึกลงเอกสาร เพื่อรองรับการ query ในอนาคต
+  // อ้างอิงรูปแบบ geohash base32 "0123456789bcdefghjkmnpqrstuvwxyz"
+  String _encodeGeohash(double latitude, double longitude,
+      {int precision = 9}) {
+    const String _base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+    double latMin = -90.0, latMax = 90.0;
+    double lonMin = -180.0, lonMax = 180.0;
+    bool isLon = true;
+    int bit = 0;
+    int ch = 0;
+    StringBuffer hash = StringBuffer();
+
+    while (hash.length < precision) {
+      double mid;
+      if (isLon) {
+        mid = (lonMin + lonMax) / 2;
+        if (longitude > mid) {
+          ch = (ch << 1) + 1;
+          lonMin = mid;
+        } else {
+          ch = (ch << 1);
+          lonMax = mid;
+        }
+      } else {
+        mid = (latMin + latMax) / 2;
+        if (latitude > mid) {
+          ch = (ch << 1) + 1;
+          latMin = mid;
+        } else {
+          ch = (ch << 1);
+          latMax = mid;
+        }
+      }
+      isLon = !isLon;
+      bit++;
+      if (bit == 5) {
+        hash.write(_base32[ch]);
+        bit = 0;
+        ch = 0;
+      }
+    }
+    return hash.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -573,6 +617,10 @@ class _MyMemberState extends State<MyMember> {
                           ? GeoPoint(selectedLocation!.latitude,
                               selectedLocation!.longitude)
                           : null,
+                      if (selectedLocation != null)
+                        'geohash': _encodeGeohash(selectedLocation!.latitude,
+                            selectedLocation!.longitude,
+                            precision: 9),
                       'ownerId': uid,
                       'timestamp': FieldValue.serverTimestamp(),
                     });
@@ -886,6 +934,10 @@ class _MyMemberState extends State<MyMember> {
                           update['location'] = GeoPoint(
                               localSelectedLocation!.latitude,
                               localSelectedLocation!.longitude);
+                          update['geohash'] = _encodeGeohash(
+                              localSelectedLocation!.latitude,
+                              localSelectedLocation!.longitude,
+                              precision: 9);
                         }
 
                         await FirebaseFirestore.instance
