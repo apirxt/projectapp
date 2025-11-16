@@ -49,6 +49,11 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // กำหนดสีของแถบด้านล่างให้คงที่สำหรับผู้ใช้ทุกประเภท
+    const Color navBgColor = Colors.blue;
+    const Color selectedColor = Colors.black;
+    const Color unselectedColor = Colors.white;
+
     //ส่วนเพจตามสิทธิ์ (แสดงแท็บปล่อยเช่าเฉพาะ Host/Admin)
     final pages = <Widget>[
       const MyHome(),
@@ -83,11 +88,13 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: pages.elementAt(currentIndex),
       bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: Colors.blue,
+        // ใช้สีเดียวกันเสมอ ไม่ขึ้นกับสิทธิ์
+        backgroundColor: navBgColor,
+        type: BottomNavigationBarType.fixed,
         items: navItems,
         currentIndex: currentIndex,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.white,
+        selectedItemColor: selectedColor,
+        unselectedItemColor: unselectedColor,
         showSelectedLabels: true,
         showUnselectedLabels: true,
         onTap: _onItemTapped,

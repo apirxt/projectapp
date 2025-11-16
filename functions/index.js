@@ -520,6 +520,7 @@ exports.listOwnerBookings = onCall(async (request) => {
       name: v.name || null,
       phone: v.phone || null,
       imageUrl: v.imageUrl || null,
+      vehicleType: v.vehicleType || null,
       bookingDate: v.bookingDate ? v.bookingDate.toMillis() : null,
       status: v.status || 'pending',
       createdAt: v.createdAt ? v.createdAt.toMillis() : null,
@@ -527,7 +528,15 @@ exports.listOwnerBookings = onCall(async (request) => {
       rejectedAt: v.rejectedAt ? v.rejectedAt.toMillis() : null,
     };
   });
-  const nextCursor = items.length > 0 ? (items[items.length - 1].createdAt || null) : null;
+  // คืน nextCursor เฉพาะกรณีที่ยังมีหน้าถัดไป (ได้ครบ lim และมี createdAt ของแถวสุดท้าย)
+  let nextCursor = null;
+  if (snap.size === lim && snap.docs.length > 0) {
+    const last = snap.docs[snap.docs.length - 1];
+    const lc = last.data()?.createdAt;
+    if (lc && typeof lc.toMillis === 'function') {
+      nextCursor = lc.toMillis();
+    }
+  }
   return { bookings: items, nextCursor };
 });
 
