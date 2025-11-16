@@ -54,6 +54,9 @@ h2 { margin: 0 0 16px; font-weight: 700; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row-between { justify-content: space-between; }
 
+/* พื้นที่ล็อกอินด้านขวาบน */
+.auth-area { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
 /* ส่วน input */
 input[type="text"], input[type="password"], input:not([type]) {
 	border: 1px solid var(--border);
@@ -95,3 +98,14 @@ button { cursor: pointer; }
 #adminOnly { display: none; }
 #notAdmin { display: none; }
 .hidden { display: none; }
+
+/* Modal สำหรับแสดงรูปสลิปขนาดใหญ่ */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 9999; }
+.modal .modal-content { background: var(--card); padding: 10px; border-radius: 10px; max-width: 90vw; max-height: 90vh; }
+.modal .modal-close { float: right; cursor: pointer; font-size: 22px; margin-bottom: 6px; }
+.modal #imgPreview { max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; }
+
+/* Tabs Switcher */
+.tabs { display: flex; gap: 8px; align-items: center; }
+.tab { border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 10px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
+.tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }

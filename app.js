@@ -40,6 +40,31 @@ const adminOnly = $("adminOnly");
 const notAdmin = $("notAdmin");
 const me = $("me");
 const hostRequestsCard = $("hostRequests");
+const tabSwitcher = $("tabSwitcher");
+const tabUsers = $("tabUsers");
+const tabRequests = $("tabRequests");
+const emailInput = $("email");
+const passwordInput = $("password");
+const btnSignIn = $("btnSignIn");
+const btnSignOut = $("btnSignOut");
+let currentTab = 'users';
+
+function showTab(tab) {
+  currentTab = tab;
+  if (tab === 'users') {
+    adminOnly.style.display = 'block';
+    hostRequestsCard.style.display = 'none';
+    tabUsers.classList.add('active');
+    tabRequests.classList.remove('active');
+    loadUsers();
+  } else {
+    adminOnly.style.display = 'none';
+    hostRequestsCard.style.display = 'block';
+    tabUsers.classList.remove('active');
+    tabRequests.classList.add('active');
+    loadRequests();
+  }
+}
 
 //ส่วนสถานะการแบ่งหน้า
 let pageTokens = [null];
@@ -71,7 +96,7 @@ function renderUsers(items) {
           <button class="btn btn-outline btn-small" data-act="admin" data-uid="${u.uid}" data-val="${!isAdmin}">${isAdmin ? "ลบสิทธิ์แอดมิน" : "ตั้งเป็นแอดมิน"}</button>
           <button class="btn btn-outline btn-small" data-act="disable" data-uid="${u.uid}" data-val="${!u.disabled}">${u.disabled ? "เปิดใช้งาน" : "ปิดใช้งาน"}</button>
           <button class="btn btn-outline btn-small" data-act="host" data-uid="${u.uid}" data-val="${!canHost}">${canHost ? "ปลดสิทธิ์ปล่อยเช่า" : "ให้สิทธิ์ปล่อยเช่า"}</button>
-          <button class="btn btn-primary btn-small" data-act="extend" data-uid="${u.uid}">ต่ออายุ +5 นาที</button>
+          <button class="btn btn-primary btn-small" data-act="extend" data-uid="${u.uid}">ต่ออายุ +10 นาที</button>
         </div>
       </td>
       <td>
@@ -119,7 +144,7 @@ usersTbody.addEventListener("click", async (e) => {
       await setUserHostPermission({ uid, canHost: val });
     } else if (act === "extend") {
       const extendHostPermission = httpsCallable(functions, "extendHostPermission");
-      await extendHostPermission({ uid, minutes: 5 });
+      await extendHostPermission({ uid, minutes: 10 });
     } else if (act === "pwReset") {
       const email = btn.getAttribute("data-email");
       if (!email) return alert("ไม่มีอีเมล");
@@ -159,6 +184,30 @@ $("btnRefresh").addEventListener("click", async () => {
   await loadUsers();
 });
 
+// ปุ่มคำนวณคะแนนรีวิวทั้งหมด (Backfill)
+$("btnBackfillRatings").addEventListener("click", async () => {
+  try {
+    if (!confirm('ยืนยันคำนวณคะแนนรีวิวใหม่ทั้งหมด?')) return;
+    const fn = httpsCallable(functions, 'backfillSlotRatings');
+    const { data } = await fn();
+    alert(`คำนวณเสร็จสิ้น อัปเดต ${data.updated} รายการ`);
+  } catch (e) {
+    alert(e.message || e);
+  }
+});
+
+// ปุ่มลบการจองที่ไม่ถูกต้อง (slot ถูกลบไปแล้ว)
+$("btnCleanupBookings").addEventListener("click", async () => {
+  try {
+    if (!confirm('ยืนยันลบการจองที่อ้างอิงประกาศที่ถูกลบแล้ว?')) return;
+    const fn = httpsCallable(functions, 'cleanupOrphanBookings');
+    const { data } = await fn();
+    alert(`ลบการจองที่ไม่ถูกต้องแล้ว ${data.deleted} รายการ`);
+  } catch (e) {
+    alert(e.message || e);
+  }
+});
+
 //ส่วนโหลดคำขอสิทธิ์ Host (ซ่อนไว้ใน UI)
 async function loadRequests() {
   const listHostRequests = httpsCallable(functions, "listHostRequests");
@@ -167,14 +216,18 @@ async function loadRequests() {
   for (const r of data.requests) {
     const tr = document.createElement("tr");
     const ts = r.requestedAt ? new Date(r.requestedAt).toLocaleString() : "-";
+    const slip = r.slipUrl ? `<img data-slp="${r.slipUrl}" src="${r.slipUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;cursor:pointer" />` : '<span class="muted">-</span>';
     tr.innerHTML = `
       <td>${r.email ?? "-"}</td>
       <td>${r.displayName ?? "-"}</td>
+      <td>${r.fullName ?? "-"}</td>
+      <td>${r.phone ?? "-"}</td>
+      <td>${slip}</td>
       <td style="font-family:monospace">${r.uid}</td>
       <td>${ts}</td>
       <td>
-        <button data-act="approve" data-uid="${r.uid}">อนุมัติ</button>
-        <button data-act="reject" data-uid="${r.uid}">ปฏิเสธ</button>
+        <button class="btn btn-primary btn-small" data-act="approve" data-uid="${r.uid}">อนุมัติ</button>
+        <button class="btn btn-outline btn-small" data-act="reject" data-uid="${r.uid}">ปฏิเสธ</button>
       </td>
     `;
     requestsTbody.appendChild(tr);
@@ -206,10 +259,10 @@ $("btnReqRefresh").addEventListener("click", async () => {
 });
 
 //ส่วนปุ่มเข้าสู่ระบบ
-$("btnSignIn").addEventListener("click", async () => {
+btnSignIn.addEventListener("click", async () => {
   try {
-    const email = $("email").value.trim();
-    const password = $("password").value;
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
     await signInWithEmailAndPassword(auth, email, password);
   } catch (err) {
     alert(err.message || err);
@@ -217,45 +270,79 @@ $("btnSignIn").addEventListener("click", async () => {
 });
 
 //ส่วนปุ่มออกจากระบบ
-$("btnSignOut").addEventListener("click", async () => {
+btnSignOut.addEventListener("click", async () => {
   await signOut(auth);
 });
 
-//ส่วนปุ่มตั้งตัวเองเป็นแอดมินคนแรก (bootstrap)
-$("btnBootstrap").addEventListener("click", async () => {
-  try {
-    const grantSelf = httpsCallable(functions, "grantSelfAdminIfNone");
-    await grantSelf();
-    // รีเฟรช id token เพื่อดึง claims ล่าสุด
-    await auth.currentUser?.getIdToken(true);
-  } catch (err) {
-    alert(err.message || err);
-  }
-});
+// ลบปุ่ม bootstrap ออกจากระบบ (ไม่ใช้งาน)
 
 //ส่วนเปลี่ยนสถานะการเข้าสู่ระบบและปรับ UI ตามสิทธิ์
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
-    me.textContent = "ยังไม่ได้เข้าสู่ระบบ";
+    me.textContent = "";
+    me.parentElement.style.display = "none";
     adminOnly.style.display = "none";
     notAdmin.style.display = "none";
+    tabSwitcher.classList.add('hidden');
+    emailInput.style.display = "";
+    passwordInput.style.display = "";
+    btnSignIn.style.display = "";
+    btnSignOut.style.display = "none";
     return;
   }
   me.textContent = `${user.email || "(ไม่มีอีเมล)"}`;
+  me.parentElement.style.display = "flex";
   const tokenResult = await getIdTokenResult(user, true);
   const isAdmin = Boolean(tokenResult.claims?.isAdmin);
   if (isAdmin) {
     adminOnly.style.display = "block";
-    // ซ่อนบัตรคำขอปล่อยเช่า ตามนโยบายปัจจุบัน (ยังคงโค้ดไว้ แต่ไม่แสดงผล)
+    // แสดงตัวสลับแท็บและเปิดแท็บผู้ใช้เป็นค่าเริ่มต้น
+    tabSwitcher.classList.remove('hidden');
     hostRequestsCard.style.display = "none";
     notAdmin.style.display = "none";
     currentPage = 0; pageTokens = [null];
-    await loadUsers();
-    // ไม่โหลดรายการคำขอ เพื่อไม่เรียกใช้งานฟังก์ชันส่วนนี้
-    // await loadRequests();
+    showTab('users');
+    emailInput.style.display = "none";
+    passwordInput.style.display = "none";
+    btnSignIn.style.display = "none";
+    btnSignOut.style.display = "";
   } else {
     adminOnly.style.display = "none";
     hostRequestsCard.style.display = "none";
-    notAdmin.style.display = "flex";
+    notAdmin.style.display = "block";
+    tabSwitcher.classList.add('hidden');
+    emailInput.style.display = "none";
+    passwordInput.style.display = "none";
+    btnSignIn.style.display = "none";
+    btnSignOut.style.display = "";
+  }
+});
+
+// คลิกเปลี่ยนแท็บ
+tabUsers.addEventListener('click', () => showTab('users'));
+tabRequests.addEventListener('click', () => showTab('requests'));
+
+// Modal preview รูปสลิป
+const imgModal = $("imgModal");
+const imgPreview = $("imgPreview");
+const imgClose = $("imgClose");
+
+requestsTbody.addEventListener("click", (e) => {
+  const img = e.target.closest('img[data-slp]');
+  if (!img) return;
+  const url = img.getAttribute('data-slp');
+  imgPreview.src = url;
+  imgModal.style.display = 'flex';
+});
+
+imgClose?.addEventListener('click', () => {
+  imgModal.style.display = 'none';
+  imgPreview.src = '';
+});
+
+imgModal?.addEventListener('click', (e) => {
+  if (e.target === imgModal) {
+    imgModal.style.display = 'none';
+    imgPreview.src = '';
   }
 });
