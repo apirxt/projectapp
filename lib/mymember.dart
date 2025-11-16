@@ -9,6 +9,7 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
+import 'screen/owner_requests.dart';
 
 class MyMember extends StatefulWidget {
   const MyMember({super.key});
@@ -29,6 +30,10 @@ class _MyMemberState extends State<MyMember> {
       TextEditingController(); // ตัวควบคุมข้อความสำหรับรายละเอียดเพิ่มเติม
   final TextEditingController cctvUrlController =
       TextEditingController(); // URL กล้องวงจรปิด
+  // ข้อมูลบัญชีรับเงินของผู้ปล่อยเช่า
+  final TextEditingController bankNameController = TextEditingController();
+  final TextEditingController accountNameController = TextEditingController();
+  final TextEditingController bankAccountController = TextEditingController();
   String vehicleType = '';
   bool _isImagePickerActive = false; // ธงสำหรับกันกดซ้อนขณะเลือกภาพ
   String? nameError; // เก็บข้อความแจ้งเตือนข้อผิดพลาดของชื่อ
@@ -135,6 +140,24 @@ class _MyMemberState extends State<MyMember> {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.inbox),
+                label: const Text('คำขอจองจากผู้ใช้'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const OwnerRequestsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
           Expanded(
             // ฟังเอกสารผู้ใช้ปัจจุบันเพื่อดึงเวลาหมดอายุสิทธิ์ปล่อยเช่า
             child: Builder(builder: (context) {
@@ -446,6 +469,25 @@ class _MyMemberState extends State<MyMember> {
                   decoration: const InputDecoration(
                       labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
                 ),
+                const Divider(height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('ข้อมูลบัญชีรับเงิน',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                TextField(
+                  controller: bankNameController,
+                  decoration: const InputDecoration(labelText: 'ชื่อธนาคาร'),
+                ),
+                TextField(
+                  controller: accountNameController,
+                  decoration: const InputDecoration(labelText: 'ชื่อบัญชี'),
+                ),
+                TextField(
+                  controller: bankAccountController,
+                  decoration: const InputDecoration(labelText: 'เลขบัญชี'),
+                  keyboardType: TextInputType.number,
+                ),
                 TextField(
                   controller: cctvUrlController,
                   decoration: const InputDecoration(
@@ -621,6 +663,9 @@ class _MyMemberState extends State<MyMember> {
                       'bike_price': int.tryParse(bikePriceController.text) ?? 0,
                       'service_date': dateController.text,
                       'service_time': timeController.text,
+                      'bankName': bankNameController.text.trim(),
+                      'accountName': accountNameController.text.trim(),
+                      'bankAccount': bankAccountController.text.trim(),
                       'details':
                           detailsController.text, // บันทึกรายละเอียดเพิ่มเติม
                       'cctv_url': cctvUrlController.text.trim(),
@@ -653,6 +698,9 @@ class _MyMemberState extends State<MyMember> {
                     timeController.clear();
                     detailsController.clear(); // เคลียร์ช่องรายละเอียดเพิ่มเติม
                     cctvUrlController.clear();
+                    bankNameController.clear();
+                    accountNameController.clear();
+                    bankAccountController.clear();
                     vehicleType = '';
                     selectedLocation = null; // ล้างค่าพิกัดที่เลือก
                   } catch (e) {
@@ -693,6 +741,11 @@ class _MyMemberState extends State<MyMember> {
     final timeCtl = TextEditingController(text: data['service_time'] ?? '');
     final detailsCtl = TextEditingController(text: data['details'] ?? '');
     final cctvUrlCtl = TextEditingController(text: data['cctv_url'] ?? '');
+    final bankNameCtl = TextEditingController(text: data['bankName'] ?? '');
+    final accountNameCtl =
+        TextEditingController(text: data['accountName'] ?? '');
+    final bankAccountCtl = TextEditingController(
+        text: data['bankAccount'] ?? data['accountNumber'] ?? '');
 
     String localVehicleType = (data['type'] ?? '').toString();
     GeoPoint? gp = data['location'] as GeoPoint?;
@@ -793,6 +846,25 @@ class _MyMemberState extends State<MyMember> {
                   controller: timeCtl,
                   decoration: const InputDecoration(
                       labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
+                ),
+                const Divider(height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('ข้อมูลบัญชีรับเงิน',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+                TextField(
+                  controller: bankNameCtl,
+                  decoration: const InputDecoration(labelText: 'ชื่อธนาคาร'),
+                ),
+                TextField(
+                  controller: accountNameCtl,
+                  decoration: const InputDecoration(labelText: 'ชื่อบัญชี'),
+                ),
+                TextField(
+                  controller: bankAccountCtl,
+                  decoration: const InputDecoration(labelText: 'เลขบัญชี'),
+                  keyboardType: TextInputType.number,
                 ),
                 TextField(
                   controller: cctvUrlCtl,
@@ -946,6 +1018,9 @@ class _MyMemberState extends State<MyMember> {
                           'service_time': timeCtl.text,
                           'details': detailsCtl.text,
                           'cctv_url': cctvUrlCtl.text.trim(),
+                          'bankName': bankNameCtl.text.trim(),
+                          'accountName': accountNameCtl.text.trim(),
+                          'bankAccount': bankAccountCtl.text.trim(),
                         };
                         if (localImageUrl != null) {
                           update['image_url'] = localImageUrl;

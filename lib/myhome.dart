@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'screen/parking_detail.dart';
 
 class MyHome extends StatefulWidget {
@@ -645,15 +646,27 @@ class _MyHomeState extends State<MyHome> {
     String? imageUrl; // URL หลังอัปโหลด
     DateTime? bookingDate; // วันที่ต้องการจอง
     bool busy = false;
+    // เลือกประเภทรถ: เลือกได้อย่างใดอย่างหนึ่งเท่านั้น
+    bool carChecked = false;
+    bool bikeChecked = false;
+    String? vehicleType; // 'car' หรือ 'bike'
+    final String bankAccount =
+        ((slotData['bankAccount'] ?? slotData['accountNumber'] ?? '')
+                .toString())
+            .trim();
+    final String bankName = (slotData['bankName'] ?? '').toString().trim();
+    final String accountName =
+        (slotData['accountName'] ?? '').toString().trim();
 
     bool isValid() {
       final name = nameCtl.text.trim();
       final phone = phoneCtl.text.trim();
-      final isDigits = RegExp(r'^\d{098-7654321}$').hasMatch(phone);
+      final isDigits = RegExp(r'^\d{10}$').hasMatch(phone);
       return name.isNotEmpty &&
           isDigits &&
           imageUrl != null &&
           bookingDate != null &&
+          vehicleType != null &&
           !busy;
     }
 
@@ -724,6 +737,8 @@ class _MyHomeState extends State<MyHome> {
                 'userId': uid,
                 'slotId': slotId,
                 'slotName': slotData['name'] ?? '-',
+                'ownerId': slotData['ownerId'],
+                'vehicleType': vehicleType,
                 'name': name,
                 'phone': phone,
                 'imageUrl': imageUrl,
@@ -773,7 +788,64 @@ class _MyHomeState extends State<MyHome> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('ที่จอด: ${slotData['name'] ?? '-'}'),
+                    child: Text(
+                      'ที่จอด: ${slotData['name'] ?? '-'}',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // ตัวเลือกประเภทรถ (อยู่เหนือช่องชื่อ)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('ประเภทรถ',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 0,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: carChecked,
+                            onChanged: (v) {
+                              setD(() {
+                                carChecked = v == true;
+                                if (carChecked) {
+                                  bikeChecked = false;
+                                  vehicleType = 'car';
+                                } else if (!bikeChecked) {
+                                  vehicleType = null;
+                                }
+                              });
+                            },
+                          ),
+                          const Text('รถยนต์'),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: bikeChecked,
+                            onChanged: (v) {
+                              setD(() {
+                                bikeChecked = v == true;
+                                if (bikeChecked) {
+                                  carChecked = false;
+                                  vehicleType = 'bike';
+                                } else if (!carChecked) {
+                                  vehicleType = null;
+                                }
+                              });
+                            },
+                          ),
+                          const Text('รถมอเตอร์ไซค์'),
+                        ],
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -821,6 +893,56 @@ class _MyHomeState extends State<MyHome> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  if (bankAccount.isNotEmpty ||
+                      bankName.isNotEmpty ||
+                      accountName.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (bankName.isNotEmpty)
+                                  Text('ชื่อธนาคาร: $bankName'),
+                                if (accountName.isNotEmpty)
+                                  Text('ชื่อบัญชี: $accountName'),
+                                if (bankAccount.isNotEmpty)
+                                  Text(
+                                    'เลขบัญชี: $bankAccount',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (bankAccount.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: busy
+                                  ? null
+                                  : () async {
+                                      await Clipboard.setData(
+                                          ClipboardData(text: bankAccount));
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content:
+                                                  Text('คัดลอกเลขบัญชีแล้ว')),
+                                        );
+                                      }
+                                    },
+                              icon: const Icon(Icons.copy, size: 18),
+                              label: const Text('คัดลอก'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  // แสดงส่วนเลขบัญชีให้อยู่เหนือปุ่มแนบรูปสลิปตามที่ร้องขอ
+                  const SizedBox(height: 4),
                   if (imageUrl != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),

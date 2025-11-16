@@ -445,7 +445,7 @@ exports.submitHostRegistration = onCall(async (request) => {
   return { status: 'requested' };
 });
 
-// ฝั่งแอดมิน: ต่ออายุสิทธิ์ Host เพิ่มจากตอนนี้ + N นาที (ค่าเริ่มต้น 5 นาที)
+// ฝั่งแอดมิน: ต่ออายุสิทธิ์ Host โดยบวกต่อจากเวลาที่เหลืออยู่ (ถ้ามี)
 // data: { uid: string, minutes?: number }
 exports.extendHostPermission = onCall(async (request) => {
   assertAdmin(request);
@@ -455,7 +455,17 @@ exports.extendHostPermission = onCall(async (request) => {
 
   const db = admin.firestore();
   const ref = db.collection("users").doc(uid);
-  const newUntil = new Date(Date.now() + minutes * 60 * 1000);
+  const now = Date.now();
+  let base = now;
+  try {
+    const snap = await ref.get();
+    const v = snap.exists ? (snap.data() || {}) : {};
+    const currentUntil = v.hostActiveUntil?.toDate?.()?.getTime?.() || null;
+    if (typeof currentUntil === 'number' && currentUntil > now) {
+      base = currentUntil; // ต่อจากเวลาที่ยังเหลืออยู่
+    }
+  } catch (_) {}
+  const newUntil = new Date(base + minutes * 60 * 1000);
 
   // ยืนยันให้ claim เป็น true เสมอ (กันกรณีค่าไม่ตรง)
   try {
@@ -474,6 +484,122 @@ exports.extendHostPermission = onCall(async (request) => {
   );
   await logAdminAction("extendHostPermission", request, { targetUid: uid, minutes });
   return { uid, hostActiveUntil: newUntil.getTime() };
+});
+
+// เจ้าของ: ดึงรายการจองของตนเอง (กล่องขาเข้า)
+// data: { status?: string, limit?: number, cursor?: number }
+exports.listOwnerBookings = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบ');
+  const ownerUid = request.auth.uid;
+  const { status, limit, cursor } = request.data || {};
+  const lim = Math.min(Number(limit || 50), 100);
+  const db = admin.firestore();
+  let q = db.collection('user_bookings')
+    .where('ownerId', '==', ownerUid)
+    .orderBy('createdAt', 'desc')
+    .limit(lim);
+  if (status && typeof status === 'string' && status !== 'all') {
+    q = db.collection('user_bookings')
+      .where('ownerId', '==', ownerUid)
+      .where('status', '==', status)
+      .orderBy('createdAt', 'desc')
+      .limit(lim);
+  }
+  if (cursor && typeof cursor === 'number') {
+    q = q.startAfter(admin.firestore.Timestamp.fromMillis(cursor));
+  }
+  const snap = await q.get();
+  const items = snap.docs.map(d => {
+    const v = d.data() || {};
+    return {
+      id: d.id,
+      userId: v.userId || null,
+      ownerId: v.ownerId || null,
+      slotId: v.slotId || null,
+      slotName: v.slotName || null,
+      name: v.name || null,
+      phone: v.phone || null,
+      imageUrl: v.imageUrl || null,
+      bookingDate: v.bookingDate ? v.bookingDate.toMillis() : null,
+      status: v.status || 'pending',
+      createdAt: v.createdAt ? v.createdAt.toMillis() : null,
+      approvedAt: v.approvedAt ? v.approvedAt.toMillis() : null,
+      rejectedAt: v.rejectedAt ? v.rejectedAt.toMillis() : null,
+    };
+  });
+  const nextCursor = items.length > 0 ? (items[items.length - 1].createdAt || null) : null;
+  return { bookings: items, nextCursor };
+});
+
+// เจ้าของ: อนุมัติ/ปฏิเสธการจอง
+// data: { bookingId: string, approve: boolean, reason?: string }
+exports.decideBooking = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบ');
+  const ownerUid = request.auth.uid;
+  const { bookingId, approve, reason } = request.data || {};
+  if (!bookingId || typeof approve !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'ต้องระบุ bookingId และ approve');
+  }
+  const db = admin.firestore();
+  const ref = db.collection('user_bookings').doc(String(bookingId));
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'ไม่พบบุ๊กกิ้ง');
+  const v = snap.data() || {};
+  if (v.ownerId !== ownerUid) throw new HttpsError('permission-denied', 'ไม่ใช่เจ้าของบุ๊กกิ้งนี้');
+  if (v.status !== 'pending') throw new HttpsError('failed-precondition', 'สถานะไม่ใช่ pending');
+
+  //ตรวจชนกันแบบเต็มวัน: slot เดียวกัน วันที่เดียวกัน ที่อนุมัติแล้ว
+  if (approve) {
+    const slotId = v.slotId;
+    const bookingDate = v.bookingDate; // Timestamp
+    if (slotId && bookingDate) {
+      const qs = await db.collection('user_bookings')
+        .where('slotId', '==', slotId)
+        .where('status', '==', 'approved')
+        .where('bookingDate', '==', bookingDate)
+        .limit(1)
+        .get();
+      if (!qs.empty) {
+        throw new HttpsError('failed-precondition', 'มีการอนุมัติซ้ำวันสำหรับช่องนี้แล้ว');
+      }
+    }
+  }
+
+  const FieldValue = admin.firestore.FieldValue;
+  if (approve) {
+    await ref.set({
+      status: 'approved',
+      approvedAt: FieldValue.serverTimestamp(),
+      decidedBy: { uid: ownerUid, email: request.auth.token?.email || null },
+      decisionNote: reason || null,
+    }, { merge: true });
+    return { ok: true, status: 'approved' };
+  } else {
+    await ref.set({
+      status: 'rejected',
+      rejectedAt: FieldValue.serverTimestamp(),
+      decidedBy: { uid: ownerUid, email: request.auth.token?.email || null },
+      decisionNote: reason || null,
+    }, { merge: true });
+    return { ok: true, status: 'rejected' };
+  }
+});
+
+// งานตามเวลา: หมดอายุคำขอที่ค้างนานเกินกำหนด
+exports.expireStaleBookings = onSchedule("every 30 minutes", async () => {
+  const db = admin.firestore();
+  const cutoff = new Date(Date.now() - 60 * 60 * 1000); // 60 นาทีที่ผ่านมา
+  const qs = await db.collection('user_bookings')
+    .where('status', '==', 'pending')
+    .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(cutoff))
+    .limit(500)
+    .get();
+  const FieldValue = admin.firestore.FieldValue;
+  for (const d of qs.docs) {
+    try {
+      await d.ref.set({ status: 'expired', expiredAt: FieldValue.serverTimestamp() }, { merge: true });
+    } catch (_) {}
+  }
 });
 
 // ส่วนชำระเงินด้วย Stripe สำหรับการสมัครเป็น Host

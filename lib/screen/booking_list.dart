@@ -13,6 +13,13 @@ class BookingListScreen extends StatelessWidget {
     return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
   }
 
+  String _fmtDateOnly(Timestamp? ts) {
+    if (ts == null) return '-';
+    final d = ts.toDate().toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -73,6 +80,12 @@ class BookingListScreen extends StatelessWidget {
               final imageUrl = (d['imageUrl'] ?? '') as String;
               final createdAt = d['createdAt'] as Timestamp?;
               final bookingDate = d['bookingDate'] as Timestamp?;
+              final vehicleType = (d['vehicleType'] ?? '-') as String;
+              final vehicleLabel = vehicleType == 'car'
+                  ? 'รถยนต์'
+                  : vehicleType == 'bike'
+                      ? 'รถมอเตอร์ไซค์'
+                      : '-';
 
               return ListTile(
                 leading: imageUrl.isNotEmpty
@@ -85,7 +98,7 @@ class BookingListScreen extends StatelessWidget {
                 title: Text(slotName,
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(
-                    'ผู้จอง: $name\nโทร: $phone\nวันที่จอง: ${_fmtTs(bookingDate)}\nสร้างเมื่อ: ${_fmtTs(createdAt)}'),
+                    'ผู้จอง: $name\nโทร: $phone\nประเภทรถ: $vehicleLabel\nวันที่จอง: ${_fmtDateOnly(bookingDate)}\nสร้างเมื่อ: ${_fmtTs(createdAt)}'),
                 trailing: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

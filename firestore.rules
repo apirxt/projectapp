@@ -99,14 +99,14 @@ service cloud.firestore {
     // การจองของผู้ใช้แต่ละคน
     match /user_bookings/{bookingId} {
       // อ่านได้เฉพาะเจ้าของเอกสาร (หรือแอดมินด้วยกฎรวมด้านบน)
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.ownerId == request.auth.uid);
 
       // สร้างเอกสาร: ต้องเป็นผู้ใช้ที่ล็อกอิน และ userId ในเอกสารถูกต้อง
       // อนุญาตเฉพาะคีย์ที่เราคาดไว้เพื่อลดข้อมูลเกินจำเป็น
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.keys().hasOnly([
-          'userId','slotId','slotName','name','phone','imageUrl','bookingDate','status','createdAt'
+          'userId','ownerId','slotId','slotName','vehicleType','name','phone','imageUrl','bookingDate','status','createdAt'
         ]);
 
       // อัปเดต/ลบ: ยังไม่เปิดให้ผู้ใช้ทำเอง (กันการแก้ค่าที่ละเอียดอ่อน)

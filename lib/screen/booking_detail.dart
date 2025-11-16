@@ -14,6 +14,13 @@ class BookingDetailScreen extends StatelessWidget {
     return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
   }
 
+  String _fmtDateOnly(Timestamp? ts) {
+    if (ts == null) return '-';
+    final d = ts.toDate().toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final String slotId = booking['slotId'] ?? '';
@@ -126,9 +133,18 @@ class BookingDetailScreen extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text('ผู้จอง: ${booking['name'] ?? '-'}'),
                 Text('โทร: ${booking['phone'] ?? '-'}'),
+                Builder(builder: (_) {
+                  final vt = (booking['vehicleType'] ?? '-') as String;
+                  final label = vt == 'car'
+                      ? 'รถยนต์'
+                      : vt == 'bike'
+                          ? 'รถมอเตอร์ไซค์'
+                          : '-';
+                  return Text('ประเภทรถ: $label');
+                }),
                 if (booking['bookingDate'] != null)
                   Text(
-                      'วันที่จอง: ${_fmtTs(booking['bookingDate'] as Timestamp?)}'),
+                      'วันที่จอง: ${_fmtDateOnly(booking['bookingDate'] as Timestamp?)}'),
                 Text('สถานะ: ${booking['status'] ?? 'pending'}'),
                 Text(
                     'สร้างเมื่อ: ${_fmtTs(booking['createdAt'] as Timestamp?)}'),
