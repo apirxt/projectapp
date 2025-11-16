@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:projectapp/myhome.dart';
 import 'package:projectapp/mymember.dart';
 import 'package:projectapp/mysupport.dart';
+import 'package:projectapp/screen/booking_list.dart';
 
 //ส่วนหน้าหลักหลังล็อกอิน (มีแท็บนำทาง)
 class MainScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-  _loadClaims(); //ส่วนโหลด claims เพื่อกำหนดแท็บที่มองเห็น
+    _loadClaims(); //ส่วนโหลด claims เพื่อกำหนดแท็บที่มองเห็น
   }
 
   //ส่วนโหลด custom claims เพื่อกำหนดสิทธิ์และแท็บที่แสดง
@@ -34,7 +35,7 @@ class _MainScreenState extends State<MainScreen> {
       _canHostParking = claims['canHostParking'] == true;
       _isAdmin = claims['isAdmin'] == true;
       if (!(_canHostParking || _isAdmin) && _selectedIndex == 1) {
-  _selectedIndex = 0; //ส่วนกลับแท็บแรก หากซ่อนแท็บเจ้าของพื้นที่
+        _selectedIndex = 0; //ส่วนกลับแท็บแรก หากซ่อนแท็บเจ้าของพื้นที่
       }
     });
   }
@@ -48,18 +49,23 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-  //ส่วนเพจตามสิทธิ์ (แสดงแท็บปล่อยเช่าเฉพาะ Host/Admin)
+    //ส่วนเพจตามสิทธิ์ (แสดงแท็บปล่อยเช่าเฉพาะ Host/Admin)
     final pages = <Widget>[
       const MyHome(),
+      const BookingListScreen(),
       if (_canHostParking || _isAdmin) const MyMember(),
       const MySupport(),
     ];
 
-  //ส่วนไอคอนเมนูด้านล่าง
+    //ส่วนไอคอนเมนูด้านล่าง
     final navItems = <BottomNavigationBarItem>[
       const BottomNavigationBarItem(
         icon: Icon(Icons.local_parking),
         label: 'หาเช่าที่จอดรถ',
+      ),
+      const BottomNavigationBarItem(
+        icon: Icon(Icons.book_online),
+        label: 'จองแล้ว',
       ),
       if (_canHostParking || _isAdmin)
         const BottomNavigationBarItem(
@@ -80,7 +86,10 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: Colors.blue,
         items: navItems,
         currentIndex: currentIndex,
-        selectedItemColor: const Color.fromARGB(255, 0, 0, 0),
+        selectedItemColor: Colors.black,
+        unselectedItemColor: Colors.white,
+        showSelectedLabels: true,
+        showUnselectedLabels: true,
         onTap: _onItemTapped,
       ),
     );

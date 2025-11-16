@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:image_picker/image_picker.dart';
 import 'screen/parking_detail.dart';
 
 class MyHome extends StatefulWidget {
@@ -19,6 +24,7 @@ class _MyHomeState extends State<MyHome> {
   Position? _currentPosition;
   double? _radiusMeters; // null = ไม่กรองตามระยะทาง
   bool _isGettingLocation = false;
+  int _limit = 20; // จำนวนรายการแรกสุดที่ดึงมา และเพิ่มได้ด้วยปุ่ม "โหลดเพิ่ม"
 
   // โหมดค้นหาจากสถานที่
   bool _isSearchByPlace = false; // true เมื่อใช้พิกัดจากข้อความค้นหา
@@ -33,6 +39,8 @@ class _MyHomeState extends State<MyHome> {
   @override
   void initState() {
     super.initState();
+    // ตั้งค่ารัศมีเริ่มต้นเป็น 1 กม. เสมอ เพื่อไม่ให้เห็นประกาศเกิน 1 กม. ตั้งแต่แรก
+    _radiusMeters = 1000;
     // เมื่อเข้าหน้า ให้พยายามดึงตำแหน่งและตั้งค่าเริ่มต้นที่ 1 กม.
     _initDefaultRadius();
   }
@@ -170,6 +178,7 @@ class _MyHomeState extends State<MyHome> {
               stream: FirebaseFirestore.instance
                   .collection('parking_slots')
                   .orderBy('timestamp', descending: false)
+                  .limit(_limit)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -216,10 +225,9 @@ class _MyHomeState extends State<MyHome> {
                   if (_isSearchByPlace) {
                     // โหมดสถานที่: ล็อกที่ 1 กม.
                     passRadius = (distance != null) && (distance <= 1000);
-                  } else if (_radiusMeters != null &&
-                      _currentPosition != null) {
-                    passRadius =
-                        (distance != null) && (distance <= _radiusMeters!);
+                  } else if (_currentPosition != null) {
+                    final double limit = _radiusMeters ?? 1000;
+                    passRadius = (distance != null) && (distance <= limit);
                   }
 
                   if (matchesText && passRadius) {
@@ -270,14 +278,20 @@ class _MyHomeState extends State<MyHome> {
                       final showLoading = snapRoute.connectionState ==
                               ConnectionState.waiting &&
                           !useRoute;
-                      return Column(
-                        children: [
-                          if (showLoading)
-                            const LinearProgressIndicator(minHeight: 2),
-                          _buildParkingList(listToRender,
-                              preferRoute: useRoute),
-                        ],
-                      );
+                      final listWidget = _buildParkingList(listToRender,
+                          preferRoute: useRoute);
+                      final canLoadMore = snapshot.data!.docs.length >= _limit;
+                      return Column(children: [
+                        if (showLoading)
+                          const LinearProgressIndicator(minHeight: 2),
+                        listWidget,
+                        const SizedBox(height: 8),
+                        if (canLoadMore)
+                          TextButton(
+                            onPressed: () => setState(() => _limit += 20),
+                            child: const Text('โหลดเพิ่ม'),
+                          ),
+                      ]);
                     },
                   );
                 }
@@ -288,7 +302,17 @@ class _MyHomeState extends State<MyHome> {
                   final db = (b['distance'] as double?) ?? double.infinity;
                   return da.compareTo(db);
                 });
-                return _buildParkingList(items, preferRoute: false);
+                final listWidget = _buildParkingList(items, preferRoute: false);
+                final canLoadMore = snapshot.data!.docs.length >= _limit;
+                return Column(children: [
+                  listWidget,
+                  const SizedBox(height: 8),
+                  if (canLoadMore)
+                    TextButton(
+                      onPressed: () => setState(() => _limit += 20),
+                      child: const Text('โหลดเพิ่ม'),
+                    ),
+                ]);
               },
             ),
             const SizedBox(height: 10),
@@ -466,8 +490,22 @@ class _MyHomeState extends State<MyHome> {
         final double? straight = entry['distance'] as double?;
         final int? routeMeters = entry['routeMeters'] as int?;
         final bool showRoute = preferRoute && routeMeters != null;
+        final numAvg = (data['rating_avg'] as num?)?.toDouble() ?? 0.0;
+        final int numCount = (data['rating_count'] as num?)?.toInt() ?? 0;
+        final thumb =
+            (data['image_thumb_url'] ?? data['image_url'] ?? '').toString();
         return ListTile(
-          leading: const Icon(Icons.local_parking),
+          leading: thumb.isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    thumb,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : const Icon(Icons.local_parking),
           title: Text(data['name'] ?? 'ไม่มีชื่อ'),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,51 +525,33 @@ class _MyHomeState extends State<MyHome> {
                   child: Text('ระยะทางโดยประมาณ: ${_formatDistance(straight)}'),
                 ),
               const SizedBox(height: 4),
-              // สรุปคะแนน (ค่าเฉลี่ยและจำนวนรีวิว)
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('parking_slots')
-                    .doc(doc.id)
-                    .collection('reviews')
-                    .snapshots(),
-                builder: (context, snap) {
-                  if (!snap.hasData) return const SizedBox.shrink();
-                  final rdocs = snap.data!.docs;
-                  if (rdocs.isEmpty) {
-                    return const Text('ยังไม่มีการให้คะแนน');
-                  }
-                  final ratings =
-                      rdocs.map((d) => (d['rating'] ?? 0).toDouble()).toList();
-                  final avg = ratings.reduce((a, b) => a + b) / ratings.length;
-                  final stars = avg.round().clamp(0, 5);
-                  return Row(
-                    children: [
-                      ...List.generate(
-                          5,
-                          (i) => Icon(
-                                i < stars ? Icons.star : Icons.star_border,
-                                color: Colors.amber,
-                                size: 16,
-                              )),
-                      const SizedBox(width: 6),
-                      Text('${avg.toStringAsFixed(1)} (${rdocs.length})'),
-                    ],
-                  );
-                },
-              ),
+              if (numCount == 0)
+                const Text('ยังไม่มีการให้คะแนน')
+              else ...[
+                Row(
+                  children: [
+                    ...List.generate(
+                      5,
+                      (i) => Icon(
+                        i < numAvg.round().clamp(0, 5)
+                            ? Icons.star
+                            : Icons.star_border,
+                        color: Colors.amber,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('${numAvg.toStringAsFixed(1)} ($numCount)'),
+                  ],
+                ),
+              ],
             ],
           ),
           trailing: ElevatedButton(
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      ParkingDetail(parkingData: data, docId: doc.id),
-                ),
-              );
+              _showBookingDialog(data, doc.id);
             },
-            child: const Text('เลือก'),
+            child: const Text('จองที่จอดรถ'),
           ),
           onTap: () {
             Navigator.push(
@@ -615,5 +635,231 @@ class _MyHomeState extends State<MyHome> {
     } catch (_) {
       return List<int?>.filled(items.length, null);
     }
+  }
+
+  // Dialog จองที่จอดรถ
+  Future<void> _showBookingDialog(
+      Map<String, dynamic> slotData, String slotId) async {
+    final nameCtl = TextEditingController();
+    final phoneCtl = TextEditingController();
+    String? imageUrl; // URL หลังอัปโหลด
+    DateTime? bookingDate; // วันที่ต้องการจอง
+    bool busy = false;
+
+    bool isValid() {
+      final name = nameCtl.text.trim();
+      final phone = phoneCtl.text.trim();
+      final isDigits = RegExp(r'^\d{098-7654321}$').hasMatch(phone);
+      return name.isNotEmpty &&
+          isDigits &&
+          imageUrl != null &&
+          bookingDate != null &&
+          !busy;
+    }
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setD) {
+          Future<void> pickAndUpload() async {
+            try {
+              setD(() => busy = true);
+              final ImagePicker picker = ImagePicker();
+              final XFile? img =
+                  await picker.pickImage(source: ImageSource.gallery);
+              if (img == null) {
+                setD(() => busy = false);
+                return;
+              }
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              final path =
+                  'booking_images/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
+              // ignore: avoid_print
+              print('UPLOAD booking_images path=$path uid=$uid');
+              final ref = FirebaseStorage.instance.ref(path);
+              // ตรวจ metadata ก่อนส่ง
+              final metadata = SettableMetadata(customMetadata: {
+                'ownerUid': uid,
+              });
+              // ignore: avoid_print
+              print(
+                  'UPLOAD booking_images metadata=${metadata.customMetadata}');
+              final task = await ref.putFile(
+                File(img.path),
+                metadata,
+              );
+              final url = await task.ref.getDownloadURL();
+              setD(() {
+                imageUrl = url;
+                busy = false;
+              });
+            } on FirebaseException catch (e) {
+              // ignore: avoid_print
+              print('UPLOAD ERROR code=${e.code} message=${e.message}');
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: ${e.code}')));
+              }
+            } catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')));
+              }
+            }
+          }
+
+          Future<void> submit() async {
+            try {
+              setD(() => busy = true);
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              final name = nameCtl.text.trim();
+              final phone = phoneCtl.text.trim();
+              await FirebaseFirestore.instance.collection('user_bookings').add({
+                'userId': uid,
+                'slotId': slotId,
+                'slotName': slotData['name'] ?? '-',
+                'name': name,
+                'phone': phone,
+                'imageUrl': imageUrl,
+                'bookingDate': bookingDate != null
+                    ? Timestamp.fromDate(DateTime(bookingDate!.year,
+                        bookingDate!.month, bookingDate!.day))
+                    : null,
+                'status': 'pending',
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+              if (mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('จองสำเร็จ')));
+              }
+            } on FirebaseException catch (e) {
+              // ignore: avoid_print
+              print('BOOKING WRITE ERROR code=${e.code} message=${e.message}');
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('การจองล้มเหลว: ${e.code}')),
+                );
+              }
+            } catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('การจองล้มเหลว: $e')));
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('จองที่จอดรถ'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'คำเตือน : การจองนี้จะเป็นการจองแบบเต็มวันเท่านั้น.',
+                      style: TextStyle(color: Colors.orangeAccent),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('ที่จอด: ${slotData['name'] ?? '-'}'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: nameCtl,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'ชื่อ',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: phoneCtl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'เบอร์โทร (9–10 หลัก)',
+                    ),
+                    onChanged: (_) => setD(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          bookingDate == null
+                              ? 'ยังไม่เลือกวันที่'
+                              : "วันที่จอง: ${bookingDate!.day.toString().padLeft(2, '0')}/${bookingDate!.month.toString().padLeft(2, '0')}/${bookingDate!.year}",
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: now,
+                            firstDate: DateTime(now.year, now.month, now.day),
+                            lastDate: now.add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setD(() => bookingDate = picked);
+                          }
+                        },
+                        icon: const Icon(Icons.event),
+                        label: const Text('เลือกวันที่จอง'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (imageUrl != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(imageUrl!,
+                          height: 120, fit: BoxFit.cover),
+                    ),
+                  const SizedBox(height: 6),
+                  ElevatedButton.icon(
+                    onPressed: busy ? null : pickAndUpload,
+                    icon: const Icon(Icons.image),
+                    label: Text(
+                        imageUrl == null ? 'แนบรูปสลิป' : 'เปลี่ยนรูปสลิป'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        // ถ้ามีรูปอัปโหลดไว้แต่ยกเลิก อาจลบไฟล์เพื่อความสะอาด (ไม่บังคับ)
+                        Navigator.pop(ctx);
+                      },
+                child: const Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: isValid() ? submit : null,
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('ยืนยันการจอง'),
+              ),
+            ],
+          );
+        });
+      },
+    );
   }
 }

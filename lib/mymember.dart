@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 
 class MyMember extends StatefulWidget {
   const MyMember({super.key});
@@ -489,6 +490,9 @@ class _MyMemberState extends State<MyMember> {
                                   .ref()
                                   .child(
                                       'parking_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
+                              // ignore: avoid_print
+                              print(
+                                  'UPLOAD parking_images path=${storageRef.fullPath} uid=$uid');
                               final uploadTask = await storageRef.putFile(
                                 File(image.path),
                                 SettableMetadata(customMetadata: {
@@ -513,6 +517,17 @@ class _MyMemberState extends State<MyMember> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                       content: Text('อัปโหลดรูปภาพเรียบร้อย')),
+                                );
+                              }
+                            } on FirebaseException catch (e) {
+                              // ignore: avoid_print
+                              print(
+                                  'UPLOAD ERROR code=${e.code} message=${e.message}');
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'อัปโหลดรูปภาพล้มเหลว: ${e.code}')),
                                 );
                               }
                             } catch (e) {
@@ -817,6 +832,9 @@ class _MyMemberState extends State<MyMember> {
                                       'parking_images/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
                               final uid =
                                   FirebaseAuth.instance.currentUser?.uid;
+                              // ignore: avoid_print
+                              print(
+                                  'UPLOAD parking_images path=${storageRef.fullPath} uid=$uid');
                               final uploadTask = await storageRef.putFile(
                                 File(image.path),
                                 SettableMetadata(customMetadata: {
@@ -831,6 +849,16 @@ class _MyMemberState extends State<MyMember> {
                                   localImagePaths.add(storageRef.fullPath);
                                 }
                               });
+                            }
+                          } on FirebaseException catch (e) {
+                            // ignore: avoid_print
+                            print(
+                                'UPLOAD ERROR code=${e.code} message=${e.message}');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'อัปโหลดรูปภาพล้มเหลว: ${e.code}')));
                             }
                           } catch (e) {
                             if (context.mounted) {

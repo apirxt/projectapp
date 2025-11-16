@@ -2,7 +2,13 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && request.auth.token.isAdmin == true; }
+    // ตรวจให้ปลอดภัย: token อาจไม่มีฟิลด์ isAdmin เสมอ ใช้ bracket access แทน
+    // ฟังก์ชันตรวจสิทธิ์แอดมิน (เรียบง่าย: ถ้าไม่มีเคลมจะคืน false)
+    function isAdmin() {
+      return request.auth != null && request.auth.token != null && (
+        request.auth.token["isAdmin"] == true || request.auth.token["admin"] == true
+      );
+    }
     function ownerUidFromResource() { return resource != null && resource.metadata != null && resource.metadata.customMetadata != null ? resource.metadata.customMetadata.ownerUid : null; }
     function ownerUidFromRequest() { return request.resource != null && request.resource.metadata != null && request.resource.metadata.customMetadata != null ? request.resource.metadata.customMetadata.ownerUid : null; }
 
@@ -19,8 +25,69 @@ service firebase.storage {
       // อัปโหลดไฟล์ใหม่: ต้องแนบ metadata.customMetadata.ownerUid เป็น uid ของผู้ใช้
       allow create: if isSignedIn() && ownerUidFromRequest() == request.auth.uid;
 
-      // แก้ไข/ลบไฟล์เดิม: อนุญาตเจ้าของไฟล์หรือแอดมิน
-      allow update, delete: if (isSignedIn() && ownerUidFromResource() == request.auth.uid);
+      // แก้ไข/ลบไฟล์เดิม: อนุญาตเจ้าของไฟล์ (รองรับไฟล์เก่าที่ไม่มี metadata โดยยอมตาม request เมื่อ uid ตรง)
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid
+      );
     }
+
+    // รูปที่แนบมากับการจอง
+    // รองรับทั้งแบบกำหนดโฟลเดอร์ตาม uid และตรวจ ownerUid ใน metadata
+    match /booking_images/{userId}/{filePath=**} {
+      // อ่านได้เมื่อผู้ใช้ล็อกอิน
+      allow read: if isSignedIn();
+
+      // อัปโหลดต้องแนบ metadata.customMetadata.ownerUid เป็น uid ผู้ใช้
+      // หรือโฟลเดอร์ที่อัปคือ /booking_images/{request.auth.uid}/...
+      allow create: if isSignedIn() && (
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+
+      // เจ้าของไฟล์เท่านั้นที่แก้ไข/ลบได้ (รองรับไฟล์เก่าที่ไม่มี metadata)
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+    }
+
+    // fallback: กรณี path booking_images/... แบบเดิมไม่มีแยก userId segment (เช่น ใช้โค้ดเก่า)
+    match /booking_images/{filePath=**} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && ownerUidFromRequest() == request.auth.uid;
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid
+      );
+    }
+
+    // รูปสลิปลงทะเบียนสิทธิ์ปล่อยเช่า
+    match /registration_slips/{userId}/{filePath=**} {
+      allow read: if isSignedIn();
+      // ผู้ใช้สามารถอัปโหลดเฉพาะในโฟลเดอร์ของตนเอง หรือแนบ ownerUid ให้ตรง
+      allow create: if isSignedIn() && (
+        userId == request.auth.uid || ownerUidFromRequest() == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+    }
+    
+      // รูปโปรไฟล์ผู้ใช้: ใช้ตัวแปร segment เดียว ไม่ใส่ .jpg ใน pattern (นามสกุลอยู่ในตัวแปร)
+      match /profile_photos/{fileName} {
+        // อ่านได้เมื่อผู้ใช้ล็อกอิน (ปรับเป็น public ได้หากต้องการ)
+        allow read: if isSignedIn();
+        // สร้างไฟล์ใหม่: ต้องแนบ customMetadata.ownerUid ตรงกับผู้ใช้เสมอ
+        allow create: if isSignedIn() && ownerUidFromRequest() == request.auth.uid;
+        // แก้ไข/ลบ: เจ้าของเท่านั้น (รองรับไฟล์เก่าที่ไม่มี metadata)
+        allow update, delete: if isSignedIn() && (
+          ownerUidFromResource() == request.auth.uid ||
+          ownerUidFromRequest() == request.auth.uid
+        );
+      }
   }
 }

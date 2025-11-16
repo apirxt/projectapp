@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:projectapp/screen/home.dart';
@@ -27,7 +28,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   @override
   void initState() {
     super.initState();
-  _hydrate(); //ส่วนโหลดข้อมูลผู้ใช้ปัจจุบันใส่ในช่องกรอก
+    _hydrate(); //ส่วนโหลดข้อมูลผู้ใช้ปัจจุบันใส่ในช่องกรอก
   }
 
   //ส่วนดึงข้อมูลจาก user ใส่ controller
@@ -151,7 +152,14 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       final ref = FirebaseStorage.instance
           .ref()
           .child('profile_photos/${user!.uid}.jpg');
-      final task = await ref.putFile(file);
+      // ignore: avoid_print
+      print('UPLOAD profile_photos path=${ref.fullPath} uid=${user!.uid}');
+      final task = await ref.putFile(
+        file,
+        SettableMetadata(customMetadata: {
+          if (user != null) 'ownerUid': user!.uid,
+        }),
+      );
       final url = await task.ref.getDownloadURL();
       await user!.updatePhotoURL(url);
       await user!.reload();
@@ -160,6 +168,15 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('อัปเดตรูปโปรไฟล์เรียบร้อย')),
+        );
+      }
+    } on FirebaseException catch (e) {
+      // พิมพ์รหัส error เพื่อช่วยวิเคราะห์ (เช่น permission-denied)
+      // ignore: avoid_print
+      print('UPLOAD ERROR code=${e.code} message=${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('อัปโหลดรูปโปรไฟล์ล้มเหลว: ${e.code}')),
         );
       }
     } catch (e) {
@@ -254,12 +271,12 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
 
     setState(() => _busy = true);
     try {
-  //ส่วนขั้นตอน 1: อัปเดตชื่อ (ถ้าเปลี่ยน)
+      //ส่วนขั้นตอน 1: อัปเดตชื่อ (ถ้าเปลี่ยน)
       if (wantsName) {
         await user!.updateDisplayName(newName);
       }
 
-  //ส่วนขั้นตอน 2: อัปเดตอีเมล (ส่งลิงก์ยืนยัน)
+      //ส่วนขั้นตอน 2: อัปเดตอีเมล (ส่งลิงก์ยืนยัน)
       if (wantsEmail) {
         try {
           await user!.verifyBeforeUpdateEmail(newEmail);
@@ -286,7 +303,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         }
       }
 
-  //ส่วนขั้นตอน 3: อัปเดตหมายเลขโทรศัพท์ (OTP)
+      //ส่วนขั้นตอน 3: อัปเดตหมายเลขโทรศัพท์ (OTP)
       if (wantsPhone) {
         String? verificationId;
         await FirebaseAuth.instance.verifyPhoneNumber(
@@ -355,7 +372,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           },
           codeAutoRetrievalTimeout: (_) {},
         );
-  // ธง done เป็นการบอกสถานะคร่าวๆ บาง flow อาจเสร็จหลัง callback ได้
+        // ธง done เป็นการบอกสถานะคร่าวๆ บาง flow อาจเสร็จหลัง callback ได้
       }
 
       await user!.reload();

@@ -2,6 +2,7 @@
 
 const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -240,6 +241,9 @@ exports.listHostRequests = onCall(async (request) => {
       uid: v.uid || d.id,
       email: v.email || null,
       displayName: v.displayName || null,
+      fullName: v.registration?.fullName || null,
+      phone: v.registration?.phone || null,
+      slipUrl: v.registration?.slipUrl || null,
       requestedAt: v.requestedAt ? v.requestedAt.toMillis() : null,
     };
   });
@@ -264,11 +268,14 @@ exports.decideHostRequest = onCall(async (request) => {
   const claims = user.customClaims || {};
 
   if (approve) {
+    // อนุมัติแล้ว เปิดสิทธิ์ทันทีเป็นเวลา 10 นาที จากตอนนี้
+    const newUntil = new Date(Date.now() + 10 * 60 * 1000);
     claims.canHostParking = true;
     await admin.auth().setCustomUserClaims(uid, claims);
     await ref.set(
       {
-        hostStatus: "approved",
+        hostStatus: "active",
+        hostActiveUntil: admin.firestore.Timestamp.fromDate(newUntil),
         approvedAt: FieldValue.serverTimestamp(),
         approvedBy: {
           uid: request.auth.uid,
@@ -278,10 +285,10 @@ exports.decideHostRequest = onCall(async (request) => {
       },
       { merge: true }
     );
-    await logAdminAction("approveHost", request, { targetUid: uid, note });
-    return { uid, status: "approved" };
+    await logAdminAction("approveHost.active10min", request, { targetUid: uid });
+    return { uid, status: "active", hostActiveUntil: newUntil.getTime() };
   } else {
-  // ถ้ามีสิทธิ์ค้างอยู่ ให้ลบสิทธิ์ก่อน
+  // ถ้ามีสิทธิ์ค้างอยู่ ให้ลบสิทธิ์ก่อน และลบประกาศทั้งหมดของผู้ใช้นี้
     if (claims.canHostParking) {
       delete claims.canHostParking;
       await admin.auth().setCustomUserClaims(uid, claims);
@@ -298,6 +305,22 @@ exports.decideHostRequest = onCall(async (request) => {
       },
       { merge: true }
     );
+    // พยายามลบประกาศเดิม (ถ้ามี)
+    try {
+      const listings = await db
+        .collection('parking_slots')
+        .where('ownerId', '==', uid)
+        .limit(500)
+        .get();
+      for (const d of listings.docs) {
+        const data = d.data() || {};
+        await deleteImagesForDocData(data);
+        await d.ref.delete();
+        await logAdminAction('decideHostRequest.deleteListingOnReject', request, { uid, slotId: d.id });
+      }
+    } catch (e) {
+      await logAdminAction('decideHostRequest.deleteListingOnReject.error', request, { uid, error: String(e) });
+    }
     await logAdminAction("rejectHost", request, { targetUid: uid, note });
     return { uid, status: "rejected" };
   }
@@ -353,10 +376,74 @@ exports.decideHostRequest = onCall(async (request) => {
         },
         { merge: true }
       );
+      // เมื่อยกเลิกสิทธิ์ ให้ลบประกาศทั้งหมดของผู้ใช้นี้เพื่อไม่ให้แสดงในแอป
+      try {
+        const listings = await db
+          .collection('parking_slots')
+          .where('ownerId', '==', uid)
+          .limit(500)
+          .get();
+        for (const d of listings.docs) {
+          const data = d.data() || {};
+          await deleteImagesForDocData(data);
+          await d.ref.delete();
+          await logAdminAction('setUserHostPermission.revoke.deleteListing', request, { uid, slotId: d.id });
+        }
+      } catch (e) {
+        await logAdminAction('setUserHostPermission.revoke.deleteListing.error', request, { uid, error: String(e) });
+      }
       await logAdminAction("setUserHostPermission.revoke", request, { targetUid: uid, note });
       return { uid, canHost: false };
     }
   });
+
+// ผู้ใช้ส่งคำขอลงทะเบียนแบบใหม่: ระบุชื่อ-นามสกุล, เบอร์โทร และลิงก์รูปสลิป
+// data: { fullName: string, phone: string, slipUrl: string }
+exports.submitHostRegistration = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบก่อน');
+  }
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  const fullName = String(data.fullName || '').trim();
+  const phone = String(data.phone || '').trim();
+  const slipUrl = String(data.slipUrl || '').trim();
+  if (!fullName || !phone || !slipUrl) {
+    throw new HttpsError('invalid-argument', 'ต้องระบุชื่อ-นามสกุล เบอร์โทร และรูปสลิป');
+  }
+
+  // บันทึกลง users/{uid}
+  const db = admin.firestore();
+  const FieldValue = admin.firestore.FieldValue;
+  const ref = db.collection('users').doc(uid);
+
+  // เก็บอีเมล/ชื่อเพื่อความสะดวกของแอดมิน
+  let email = request.auth.token?.email || null;
+  let displayName = request.auth.token?.name || null;
+  try {
+    const u = await admin.auth().getUser(uid);
+    email = u.email || email;
+    displayName = u.displayName || displayName;
+  } catch (_) {}
+
+  await ref.set({
+    uid,
+    email: email || null,
+    displayName: displayName || null,
+    hostStatus: 'requested',
+    requestedAt: FieldValue.serverTimestamp(),
+    registration: {
+      fullName,
+      phone,
+      slipUrl,
+      provider: 'manual',
+      createdAt: FieldValue.serverTimestamp(),
+    },
+  }, { merge: true });
+
+  await logAdminAction('submitHostRegistration', request, { uid });
+  return { status: 'requested' };
+});
 
 // ฝั่งแอดมิน: ต่ออายุสิทธิ์ Host เพิ่มจากตอนนี้ + N นาที (ค่าเริ่มต้น 5 นาที)
 // data: { uid: string, minutes?: number }
@@ -716,6 +803,16 @@ exports.deleteParkingSlot = onCall(async (request) => {
     await rootRef.delete().catch(() => {});
 
     await logAdminAction('deleteParkingSlot', request, { slotId });
+    // ลบ bookings ที่อ้างอิง slotId นี้ออกด้วย
+    try {
+      const qs = await db.collection('user_bookings').where('slotId', '==', slotId).limit(500).get();
+      for (const b of qs.docs) {
+        await b.ref.delete();
+      }
+      await logAdminAction('deleteParkingSlot.cascadeBookings', request, { slotId, deleted: qs.size });
+    } catch (e) {
+      await logAdminAction('deleteParkingSlot.cascadeBookings.error', request, { slotId, error: String(e) });
+    }
     return { ok: true, slotId };
   } catch (e) {
     throw new HttpsError('internal', String(e?.message || e));
@@ -783,4 +880,119 @@ exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request)
   });
 
   return { distances: out, status: 'ok' };
+});
+
+// รวมคะแนนรีวิวลงในเอกสารแม่ parking_slots
+// เก็บค่า: rating_sum, rating_count, rating_avg เพื่อให้แอปอ่านได้เร็วและไม่ต้องเปิดสตรีมย่อย
+// Firestore trigger v2: ใช้รูปแบบ 'documents/<path>'
+exports.aggregateSlotRatings = onDocumentWritten(
+  "documents/parking_slots/{slotId}/reviews/{reviewId}",
+  async (event) => {
+    try {
+      const before = event.data?.before?.data() || null;
+      const after = event.data?.after?.data() || null;
+      const slotId = event.params.slotId;
+      if (!slotId) return;
+
+      const db = admin.firestore();
+      const slotRef = db.collection('parking_slots').doc(String(slotId));
+      const snap = await slotRef.get();
+      const cur = snap.exists ? (snap.data() || {}) : {};
+      let sum = Number(cur.rating_sum || 0);
+      let count = Number(cur.rating_count || 0);
+
+      const oldRating = before && typeof before.rating === 'number' ? Number(before.rating) : null;
+      const newRating = after && typeof after.rating === 'number' ? Number(after.rating) : null;
+
+      // กรณีสร้างใหม่
+      if (oldRating == null && newRating != null) {
+        sum += newRating;
+        count += 1;
+      }
+      // กรณีอัปเดตค่า
+      else if (oldRating != null && newRating != null) {
+        sum += (newRating - oldRating);
+      }
+      // กรณีลบออก
+      else if (oldRating != null && newRating == null) {
+        sum -= oldRating;
+        count -= 1;
+      }
+
+      if (count < 0) count = 0;
+      if (sum < 0) sum = 0;
+      const avg = count > 0 ? sum / count : 0;
+
+      await slotRef.set({
+        rating_sum: sum,
+        rating_count: count,
+        rating_avg: avg,
+      }, { merge: true });
+    } catch (e) {
+      console.error('aggregateSlotRatings error', e);
+    }
+  }
+);
+
+// ลบการจองทุกอันที่อ้างอิง slot ที่ถูกลบ (กันกรณีลบเอกสารด้วยวิธีอื่น)
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+exports.cascadeDeleteBookingsOnSlotDelete = onDocumentDeleted(
+  "documents/parking_slots/{slotId}",
+  async (event) => {
+    const slotId = String(event.params.slotId);
+    try {
+      const db = admin.firestore();
+      const qs = await db.collection('user_bookings').where('slotId', '==', slotId).limit(1000).get();
+      for (const d of qs.docs) {
+        await d.ref.delete();
+      }
+      await logAdminAction('slotDeleted.cascadeBookings', null, { slotId, deleted: qs.size });
+    } catch (e) {
+      await logAdminAction('slotDeleted.cascadeBookings.error', null, { slotId, error: String(e) });
+    }
+  }
+);
+
+// เรียกแบบแอดมิน: คำนวณค่า rating_sum/rating_count/rating_avg ใหม่ให้ทุก slot (backfill)
+exports.backfillSlotRatings = onCall(async (request) => {
+  assertAdmin(request);
+  const db = admin.firestore();
+  const slots = await db.collection('parking_slots').limit(1000).get();
+  for (const doc of slots.docs) {
+    try {
+      const reviews = await doc.ref.collection('reviews').get();
+      let sum = 0; let count = 0;
+      for (const r of reviews.docs) {
+        const val = r.data()?.rating;
+        if (typeof val === 'number') { sum += Number(val); count += 1; }
+      }
+      const avg = count > 0 ? sum / count : 0;
+      await doc.ref.set({ rating_sum: sum, rating_count: count, rating_avg: avg }, { merge: true });
+    } catch (e) {
+      console.error('backfillSlotRatings for', doc.id, e);
+    }
+  }
+  return { ok: true, updated: slots.size };
+});
+
+// ล้างรายการจองที่ชี้ไปยัง slot ที่ไม่มีอยู่แล้ว (admin เท่านั้น)
+exports.cleanupOrphanBookings = onCall(async (request) => {
+  assertAdmin(request);
+  const db = admin.firestore();
+  const qs = await db.collection('user_bookings').limit(500).get();
+  let deleted = 0;
+  for (const b of qs.docs) {
+    try {
+      const v = b.data() || {};
+      const slotId = v.slotId;
+      if (!slotId) continue;
+      const snap = await db.collection('parking_slots').doc(String(slotId)).get();
+      if (!snap.exists) {
+        await b.ref.delete();
+        deleted++;
+      }
+    } catch (_) {}
+  }
+  await logAdminAction('cleanupOrphanBookings', request, { deleted });
+  return { ok: true, deleted };
 });

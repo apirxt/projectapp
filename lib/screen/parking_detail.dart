@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ParkingDetail extends StatefulWidget {
   final Map<String, dynamic> parkingData;
@@ -29,7 +28,7 @@ class _ParkingDetailState extends State<ParkingDetail> {
   Widget build(BuildContext context) {
     final parkingData = widget.parkingData;
     final location = parkingData['location'];
-    final String cctvUrl = (parkingData['cctv_url'] ?? '').toString();
+    // CCTV ถูกย้ายไปแสดงในหน้ารายละเอียดการจองเท่านั้น
 
     return Scaffold(
       appBar: AppBar(
@@ -106,46 +105,6 @@ class _ParkingDetailState extends State<ParkingDetail> {
                 ),
               ],
               const SizedBox(height: 20),
-              if (cctvUrl.isNotEmpty) ...[
-                const Text(
-                  'กล้องวงจรปิด (CCTV):',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        final uri = Uri.parse(cctvUrl);
-                        final ok = await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                        if (!context.mounted) {
-                          return; // กันการใช้ context ถ้า widget ถูกถอดหลัง await
-                        }
-                        if (!ok) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('ไม่สามารถเปิดลิงก์กล้องได้')),
-                          );
-                        }
-                      } catch (e) {
-                        if (!context.mounted) {
-                          return;
-                        }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('ลิงก์ไม่ถูกต้อง: $e')),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.videocam),
-                    label: const Text('เปิดกล้องวงจรปิด'),
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
               // เพิ่ม "รายละเอียดเพิ่มเติม" ใต้แผนที่ และก่อนส่วนรีวิว
               const Text(
                 'รายละเอียดเพิ่มเติม:',

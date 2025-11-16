@@ -9,20 +9,30 @@
   <body>
   <!-- ส่วนโครงร่างหน้าแอดมิน -->
   <div class="container">
-    <h2>ProjectApp – Admin</h2>
+    <div class="row row-between">
+      <h2>ProjectApp – Admin</h2>
+      <div id="authArea" class="auth-area">
+        <div id="authControls" class="row">
+          <input id="email" class="input" placeholder="อีเมลผู้ดูแล" />
+          <input id="password" class="input" type="password" placeholder="รหัสผ่าน" />
+          <button id="btnSignIn" class="btn btn-primary">เข้าสู่ระบบ</button>
+          <button id="btnSignOut" class="btn btn-outline">ออกจากระบบ</button>
+        </div>
+        <div class="row"><span id="me" class="muted"></span></div>
+        <div id="notAdmin" class="row">
+          <span class="danger">บัญชีนี้ยังไม่เป็นผู้ดูแลระบบ</span>
+        </div>
+      </div>
+    </div>
 
   <!-- ส่วนเข้าสู่ระบบและสถานะผู้ใช้ -->
   <div id="authCard" class="card">
-      <div class="row">
-        <input id="email" class="input" placeholder="อีเมลผู้ดูแล" />
-        <input id="password" class="input" type="password" placeholder="รหัสผ่าน" />
-        <button id="btnSignIn" class="btn btn-primary">เข้าสู่ระบบ</button>
-        <button id="btnSignOut" class="btn btn-outline">ออกจากระบบ</button>
-      </div>
-      <div class="row"><span id="me" class="muted"></span></div>
-      <div id="notAdmin" class="row">
-        <span class="danger">บัญชีนี้ยังไม่เป็นผู้ดูแลระบบ</span>
-        <button id="btnBootstrap" class="btn btn-outline">ฉันคือผู้ดูแลคนแรก</button>
+      <div class="row row-between">
+        <!-- สลับแท็บ (ซ้าย) -->
+        <div id="tabSwitcher" class="tabs hidden">
+          <button id="tabUsers" class="tab active">จัดการผู้ใช้</button>
+          <button id="tabRequests" class="tab">คำขอปล่อยเช่าที่จอด</button>
+        </div>
       </div>
     </div>
 
@@ -34,6 +44,8 @@
           <button id="btnRefresh" class="btn">รีเฟรช</button>
           <button id="btnPrev" class="btn">ก่อนหน้า</button>
           <button id="btnNext" class="btn">ถัดไป</button>
+          <button id="btnBackfillRatings" class="btn">คำนวณคะแนนทั้งหมด</button>
+          <button id="btnCleanupBookings" class="btn">ลบการจองที่ไม่ถูกต้อง</button>
         </div>
       </div>
       <div class="table-wrap">
@@ -71,6 +83,9 @@
           <tr>
             <th>อีเมล</th>
             <th>ชื่อ</th>
+            <th>ชื่อ-นามสกุล</th>
+            <th>เบอร์โทร</th>
+            <th>สลิป</th>
             <th>UID</th>
             <th>วันที่ขอ</th>
             <th>จัดการ</th>
@@ -78,6 +93,14 @@
         </thead>
         <tbody id="requests"></tbody>
       </table>
+      </div>
+    </div>
+
+    <!-- Modal แสดงรูปใหญ่ -->
+    <div id="imgModal" class="modal hidden">
+      <div class="modal-content">
+        <span id="imgClose" class="modal-close">×</span>
+        <img id="imgPreview" src="" alt="preview" />
       </div>
     </div>
 

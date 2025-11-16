@@ -4,7 +4,9 @@ service cloud.firestore {
 
     // Admin override: ผู้ใช้ที่มี custom claim isAdmin = true สามารถทำทุกอย่างได้ทั่วทั้งฐาน
     function isAdmin() {
-      return request.auth != null && request.auth.token.isAdmin == true;
+      return request.auth != null && request.auth.token != null && (
+        request.auth.token["isAdmin"] == true || request.auth.token["admin"] == true
+      );
     }
 
     // อนุญาต admin ทั้งอ่านและเขียนทุก path
@@ -92,6 +94,23 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
       // การเขียนปรับสถานะทำโดย Cloud Functions (Admin SDK) จึงไม่ต้องเปิดสิทธิ์เขียนจาก client
+    }
+
+    // การจองของผู้ใช้แต่ละคน
+    match /user_bookings/{bookingId} {
+      // อ่านได้เฉพาะเจ้าของเอกสาร (หรือแอดมินด้วยกฎรวมด้านบน)
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // สร้างเอกสาร: ต้องเป็นผู้ใช้ที่ล็อกอิน และ userId ในเอกสารถูกต้อง
+      // อนุญาตเฉพาะคีย์ที่เราคาดไว้เพื่อลดข้อมูลเกินจำเป็น
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId','slotId','slotName','name','phone','imageUrl','bookingDate','status','createdAt'
+        ]);
+
+      // อัปเดต/ลบ: ยังไม่เปิดให้ผู้ใช้ทำเอง (กันการแก้ค่าที่ละเอียดอ่อน)
+      // หากต้องการให้ยกเลิกการจองเองได้ ค่อยเพิ่มกฎเฉพาะภายหลัง
     }
   }
 }

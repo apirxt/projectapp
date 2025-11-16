@@ -1,11 +1,13 @@
 //ส่วนนำเข้าแพ็กเกจ
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:projectapp/screen/account_profile.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 //ส่วนหน้าฟีเจอร์ Support/สิทธิ์ปล่อยเช่า
 class MySupport extends StatefulWidget {
@@ -17,7 +19,8 @@ class MySupport extends StatefulWidget {
 
 class _MySupportState extends State<MySupport> {
   //ส่วนตัวแปรสถานะสิทธิ์ host และเวลาคงเหลือ
-  String? _hostStatus; // สถานะ: none | payment_pending | active | expired | rejected
+  String?
+      _hostStatus; // สถานะ: none | payment_pending | active | expired | rejected
   Timestamp? _hostActiveUntil;
   bool _loadingStatus = false;
   Timer? _tick;
@@ -26,7 +29,7 @@ class _MySupportState extends State<MySupport> {
   @override
   void initState() {
     super.initState();
-  _listenHostStatus(); //ส่วนเริ่มฟังสถานะจาก Firestore
+    _listenHostStatus(); //ส่วนเริ่มฟังสถานะจาก Firestore
   }
 
   //ส่วนฟังสถานะ Host จาก Firestore และตั้ง countdown
@@ -65,34 +68,161 @@ class _MySupportState extends State<MySupport> {
           setState(() => _remaining = diff);
         }
       });
-  //ส่วนรีเฟรช claims เผื่อกรณีสิทธิ์เปลี่ยนแบบเรียลไทม์
+      //ส่วนรีเฟรช claims เผื่อกรณีสิทธิ์เปลี่ยนแบบเรียลไทม์
       FirebaseAuth.instance.currentUser?.getIdToken(true);
     } else {
       _remaining = Duration.zero;
     }
   }
 
-  //ส่วนเปิด Stripe Checkout สำหรับลงทะเบียนสิทธิ์ปล่อยเช่า
-  Future<void> _startRegistration() async {
-    try {
-      final callable =
-          FirebaseFunctions.instance.httpsCallable('createHostRegistration');
-      final res = await callable.call();
-      final url = Uri.parse(res.data['url'] as String);
-      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-        throw Exception('ไม่สามารถเปิดหน้า Checkout ได้');
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'เปิดหน้า Checkout แล้ว ถ้าชำระสำเร็จระบบจะเปิดสิทธิ์อัตโนมัติ')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+  // ฟอร์มลงทะเบียนใหม่: กรอกชื่อ-นามสกุล, เบอร์โทร และแนบรูปสลิป
+  Future<void> _openRegistrationDialog() async {
+    final nameCtl = TextEditingController();
+    final phoneCtl = TextEditingController();
+    String? slipUrl;
+    bool busy = false;
+
+    bool valid() {
+      final name = nameCtl.text.trim();
+      final phone = phoneCtl.text.trim();
+      final isDigits = RegExp(r'^\d{9,10}$').hasMatch(phone);
+      return name.isNotEmpty && isDigits && slipUrl != null && !busy;
     }
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setD) {
+          Future<void> pickAndUpload() async {
+            try {
+              setD(() => busy = true);
+              final picker = ImagePicker();
+              final XFile? img =
+                  await picker.pickImage(source: ImageSource.gallery);
+              if (img == null) {
+                setD(() => busy = false);
+                return;
+              }
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              final path =
+                  'registration_slips/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
+              final ref = FirebaseStorage.instance.ref(path);
+              final meta = SettableMetadata(customMetadata: {'ownerUid': uid});
+              final task = await ref.putFile(File(img.path), meta);
+              final url = await task.ref.getDownloadURL();
+              setD(() {
+                slipUrl = url;
+                busy = false;
+              });
+            } on FirebaseException catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: ${e.code}')),
+                );
+              }
+            } catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')),
+                );
+              }
+            }
+          }
+
+          Future<void> submit() async {
+            try {
+              setD(() => busy = true);
+              final callable = FirebaseFunctions.instance
+                  .httpsCallable('submitHostRegistration');
+              await callable.call({
+                'fullName': nameCtl.text.trim(),
+                'phone': phoneCtl.text.trim(),
+                'slipUrl': slipUrl,
+              });
+              if (!mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('ส่งคำขอเรียบร้อย รอแอดมินตรวจสอบ')),
+              );
+            } on FirebaseFunctionsException catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('ส่งคำขอไม่สำเร็จ: ${e.code}')),
+                );
+              }
+            } catch (e) {
+              setD(() => busy = false);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('ส่งคำขอไม่สำเร็จ: $e')),
+                );
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('ลงทะเบียนสิทธิ์ปล่อยเช่า'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtl,
+                    decoration:
+                        const InputDecoration(labelText: 'ชื่อ-นามสกุล'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: phoneCtl,
+                    decoration: const InputDecoration(
+                        labelText: 'เบอร์โทร (9–10 หลัก)'),
+                    keyboardType: TextInputType.phone,
+                    onChanged: (_) => setD(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  if (slipUrl != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(slipUrl!,
+                          height: 140, fit: BoxFit.cover),
+                    ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: busy ? null : pickAndUpload,
+                    icon: const Icon(Icons.image),
+                    label:
+                        Text(slipUrl == null ? 'แนบรูปสลิป' : 'เปลี่ยนรูปสลิป'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(ctx),
+                child: const Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: valid() ? submit : null,
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('ส่งคำขอ'),
+              ),
+            ],
+          );
+        });
+      },
+    );
   }
 
   @override
@@ -182,19 +312,15 @@ class _MySupportState extends State<MySupport> {
                               _hostStatus == 'expired' ||
                               _hostStatus == 'rejected'))
                         ElevatedButton(
-                          onPressed: _startRegistration,
-                          child: const Text('ลงทะเบียน (100 บาท)'),
+                          onPressed: _openRegistrationDialog,
+                          child: const Text('ลงทะเบียน'),
                         ),
-                      if (!_loadingStatus && _hostStatus == 'payment_pending')
-                        ElevatedButton(
-                          onPressed: _startRegistration,
-                          child: const Text('ไปชำระเงิน'),
-                        ),
+                      if (!_loadingStatus && _hostStatus == 'requested')
+                        const Chip(label: Text('รอตรวจสอบ')),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                      'หลังชำระเงินสำเร็จ ระบบจะเปิดสิทธิ์อัตโนมัติ และหมดอายุใน 5 นาที'),
+                  const Text('หลังส่งคำขอ แอดมินจะตรวจสอบและอนุมัติให้ใช้งาน'),
                 ],
               ),
             ),
