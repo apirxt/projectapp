@@ -653,9 +653,7 @@ class _MyMemberState extends State<MyMember> {
                                     .ref()
                                     .child(
                                         'parking_images/$uid/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
-                                // ignore: avoid_print
-                                print(
-                                    'UPLOAD parking_images path=${storageRef.fullPath} uid=$uid');
+                                // บันทึกโดยไม่ต้องพิมพ์ log ที่ไม่จำเป็น
                                 final uploadTask = await storageRef.putFile(
                                   File(image.path),
                                   SettableMetadata(customMetadata: {
@@ -682,9 +680,6 @@ class _MyMemberState extends State<MyMember> {
                               }
                             }
                           } on FirebaseException catch (e) {
-                            // ignore: avoid_print
-                            print(
-                                'UPLOAD ERROR code=${e.code} message=${e.message}');
                             if (mounted) {
                               rootMessenger.showSnackBar(
                                 SnackBar(
@@ -840,476 +835,7 @@ class _MyMemberState extends State<MyMember> {
     );
   }
 
-  Widget _buildEditDialog(
-      BuildContext context, String docId, Map<String, dynamic> data) {
-    // สถานะและ controller ที่ตั้งค่าเริ่มจากข้อมูลเดิม
-    final nameCtl = TextEditingController(text: data['name'] ?? '');
-    final carCountCtl =
-        TextEditingController(text: (data['car_count']?.toString() ?? ''));
-    final bikeCountCtl =
-        TextEditingController(text: (data['bike_count']?.toString() ?? ''));
-    final carPriceCtl =
-        TextEditingController(text: (data['car_price']?.toString() ?? ''));
-    final bikePriceCtl =
-        TextEditingController(text: (data['bike_price']?.toString() ?? ''));
-    final dateCtl = TextEditingController(text: data['service_date'] ?? '');
-    final timeCtl = TextEditingController(text: data['service_time'] ?? '');
-    final detailsCtl = TextEditingController(text: data['details'] ?? '');
-    final cctvUrlCtl = TextEditingController(text: data['cctv_url'] ?? '');
-    final bankNameCtl = TextEditingController(text: data['bankName'] ?? '');
-    final accountNameCtl =
-        TextEditingController(text: data['accountName'] ?? '');
-    final bankAccountCtl = TextEditingController(
-        text: data['bankAccount'] ?? data['accountNumber'] ?? '');
-
-    String localVehicleType = (data['type'] ?? '').toString();
-    GeoPoint? gp = data['location'] as GeoPoint?;
-    LatLng? localSelectedLocation =
-        gp != null ? LatLng(gp.latitude, gp.longitude) : null;
-    final List<String> localImageUrls = ((data['image_urls'] as List?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        <String>[])
-      ..addAll([]);
-    final String? singleImageUrl = data['image_url'] as String?;
-    if (localImageUrls.isEmpty &&
-        singleImageUrl != null &&
-        singleImageUrl.isNotEmpty) {
-      localImageUrls.add(singleImageUrl);
-    }
-    final List<String> originalImagePaths =
-        (data['image_paths'] as List?)?.map((e) => e.toString()).toList() ??
-            <String>[];
-    final List<String> localImagePaths = List<String>.from(originalImagePaths);
-    String? localNameError;
-    bool busy = false;
-    // เวลาเปิด-ปิด และธนาคารสำหรับแก้ไข
-    TimeOfDay? editOpenTime;
-    TimeOfDay? editCloseTime;
-    String? editSelectedBank;
-
-    // พยายามแปลงค่าเวลาเดิมเป็น TimeOfDay
-    void initTimeFromText() {
-      final t = timeCtl.text.trim();
-      if (t.contains('-')) {
-        final parts = t.split('-');
-        TimeOfDay? parseTime(String s) {
-          final seg = s.split(':');
-          if (seg.length != 2) return null;
-          final h = int.tryParse(seg[0]);
-          final m = int.tryParse(seg[1]);
-          if (h == null || m == null) return null;
-          return TimeOfDay(hour: h, minute: m);
-        }
-
-        editOpenTime = parseTime(parts[0].trim());
-        editCloseTime = parseTime(parts[1].trim());
-      }
-      if ((bankNameCtl.text).isNotEmpty) {
-        editSelectedBank = bankNameCtl.text;
-      }
-    }
-
-    initTimeFromText();
-
-    return StatefulBuilder(
-      builder: (BuildContext context, StateSetter setDialogState) {
-        return AlertDialog(
-          title: const Text('แก้ไขที่จอดรถ'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtl,
-                  decoration: InputDecoration(
-                    labelText: 'ชื่อที่จอดรถ',
-                    errorText: localNameError,
-                  ),
-                ),
-                CheckboxListTile(
-                  title: const Text('รถยนต์'),
-                  value: localVehicleType.contains('รถยนต์'),
-                  onChanged: (bool? value) {
-                    setDialogState(() {
-                      if (value == true) {
-                        if (!localVehicleType.contains('รถยนต์')) {
-                          localVehicleType += 'รถยนต์ ';
-                        }
-                      } else {
-                        localVehicleType =
-                            localVehicleType.replaceAll('รถยนต์ ', '');
-                      }
-                    });
-                  },
-                ),
-                if (localVehicleType.contains('รถยนต์')) ...[
-                  TextField(
-                    controller: carCountCtl,
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: 'จำนวนที่จอดรถยนต์'),
-                  ),
-                  TextField(
-                    controller: carPriceCtl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: 'ราคาที่จอดรถยนต์(บาท/ชั่วโมง)'),
-                  ),
-                ],
-                const Divider(height: 0),
-                CheckboxListTile(
-                  title: const Text('มอเตอร์ไซค์'),
-                  value: localVehicleType.contains('มอเตอร์ไซค์'),
-                  onChanged: (bool? value) {
-                    setDialogState(() {
-                      if (value == true) {
-                        if (!localVehicleType.contains('มอเตอร์ไซค์')) {
-                          localVehicleType += 'มอเตอร์ไซค์ ';
-                        }
-                      } else {
-                        localVehicleType =
-                            localVehicleType.replaceAll('มอเตอร์ไซค์ ', '');
-                      }
-                    });
-                  },
-                ),
-                if (localVehicleType.contains('มอเตอร์ไซค์')) ...[
-                  TextField(
-                    controller: bikeCountCtl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: 'จำนวนที่จอดมอเตอร์ไซค์'),
-                  ),
-                  TextField(
-                    controller: bikePriceCtl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: 'ราคาที่จอดมอเตอร์ไซค์(บาท/ชั่วโมง)'),
-                  ),
-                ],
-                const Divider(height: 0),
-                TextField(
-                  controller: dateCtl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                      labelText: 'ช่วงวันที่เปิดให้บริการ (เริ่ม - สิ้นสุด)'),
-                  onTap: () async {
-                    final now = DateTime.now();
-                    final picked = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(now.year, now.month, now.day),
-                      lastDate: now.add(const Duration(days: 365 * 3)),
-                    );
-                    if (picked != null) {
-                      String two(int v) => v.toString().padLeft(2, '0');
-                      final s = picked.start;
-                      final e = picked.end;
-                      setDialogState(() {
-                        dateCtl.text =
-                            '${two(s.day)}/${two(s.month)}/${s.year} - ${two(e.day)}/${two(e.month)}/${e.year}';
-                      });
-                    }
-                  },
-                ),
-                TextField(
-                  controller: timeCtl,
-                  readOnly: true,
-                  decoration: const InputDecoration(
-                      labelText: 'เวลาเปิดให้บริการ (เช่น 08:00-20:00)'),
-                  onTap: () async {
-                    final ot = await showTimePicker(
-                      context: context,
-                      initialTime:
-                          editOpenTime ?? const TimeOfDay(hour: 8, minute: 0),
-                    );
-                    if (ot == null) return;
-                    if (!context.mounted) return;
-                    final ct = await showTimePicker(
-                      context: context,
-                      initialTime:
-                          editCloseTime ?? const TimeOfDay(hour: 20, minute: 0),
-                    );
-                    if (ct == null) return;
-                    if (!context.mounted) return;
-                    setDialogState(() {
-                      editOpenTime = ot;
-                      editCloseTime = ct;
-                      String two(int v) => v.toString().padLeft(2, '0');
-                      timeCtl.text =
-                          '${two(ot.hour)}:${two(ot.minute)}-${two(ct.hour)}:${two(ct.minute)}';
-                    });
-                  },
-                ),
-                const Divider(height: 16),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('ข้อมูลบัญชีรับเงิน',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: editSelectedBank ??
-                      (bankNameCtl.text.isNotEmpty ? bankNameCtl.text : null),
-                  items: [
-                    DropdownMenuItem(value: 'กสิกร', child: Text('กสิกร')),
-                    DropdownMenuItem(
-                        value: 'ไทยพาณิชย์', child: Text('ไทยพาณิชย์')),
-                    DropdownMenuItem(value: 'กรุงไทย', child: Text('กรุงไทย')),
-                    DropdownMenuItem(value: 'กรุงเทพ', child: Text('กรุงเทพ')),
-                    DropdownMenuItem(value: 'กรุงศรี', child: Text('กรุงศรี')),
-                    DropdownMenuItem(
-                        value: 'ทหารไทยธนชาต', child: Text('ทหารไทยธนชาต')),
-                    DropdownMenuItem(value: 'ออมสิน', child: Text('ออมสิน')),
-                  ],
-                  onChanged: (v) {
-                    setDialogState(() {
-                      editSelectedBank = v;
-                      bankNameCtl.text = v ?? '';
-                    });
-                  },
-                  decoration: const InputDecoration(labelText: 'ชื่อธนาคาร'),
-                ),
-                TextField(
-                  controller: accountNameCtl,
-                  decoration: const InputDecoration(labelText: 'ชื่อบัญชี'),
-                ),
-                TextField(
-                  controller: bankAccountCtl,
-                  decoration: const InputDecoration(labelText: 'เลขบัญชี'),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: cctvUrlCtl,
-                  decoration: const InputDecoration(
-                    labelText: 'URL กล้องวงจรปิด',
-                    hintText: 'เช่น http://... หรือ rtsp://...',
-                  ),
-                  keyboardType: TextInputType.url,
-                ),
-                TextField(
-                  controller: detailsCtl,
-                  decoration: const InputDecoration(
-                    labelText: 'รายละเอียดเพิ่มเติม',
-                    hintText: 'แก้ไขรายละเอียดเกี่ยวกับที่จอดรถ',
-                  ),
-                  maxLines: null,
-                ),
-                if (localImageUrls.isNotEmpty)
-                  SizedBox(
-                    height: 120,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: localImageUrls.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (ctx, i) => ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          localImageUrls[i],
-                          height: 120,
-                          width: 180,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
-                ElevatedButton(
-                  onPressed: busy
-                      ? null
-                      : () async {
-                          setDialogState(() => busy = true);
-                          try {
-                            final ImagePicker picker = ImagePicker();
-                            final List<XFile> images =
-                                await picker.pickMultiImage();
-                            if (images.isNotEmpty) {
-                              final uid =
-                                  FirebaseAuth.instance.currentUser?.uid;
-                              if (uid == null) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'กรุณาเข้าสู่ระบบก่อนอัปโหลดรูปภาพ')),
-                                  );
-                                }
-                                setDialogState(() => busy = false);
-                                return;
-                              }
-                              for (final image in images) {
-                                final storageRef = FirebaseStorage.instance
-                                    .ref()
-                                    .child(
-                                        'parking_images/$uid/${DateTime.now().millisecondsSinceEpoch}_${image.name}');
-                                // ignore: avoid_print
-                                print(
-                                    'UPLOAD parking_images path=${storageRef.fullPath} uid=$uid');
-                                final uploadTask = await storageRef.putFile(
-                                  File(image.path),
-                                  SettableMetadata(customMetadata: {
-                                    'ownerUid': uid,
-                                  }),
-                                );
-                                final url =
-                                    await uploadTask.ref.getDownloadURL();
-                                setDialogState(() {
-                                  localImageUrls.add(url);
-                                  if (!localImagePaths
-                                      .contains(storageRef.fullPath)) {
-                                    localImagePaths.add(storageRef.fullPath);
-                                  }
-                                });
-                              }
-                            }
-                          } on FirebaseException catch (e) {
-                            // ignore: avoid_print
-                            print(
-                                'UPLOAD ERROR code=${e.code} message=${e.message}');
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'อัปโหลดรูปภาพล้มเหลว: ${e.code}')));
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content:
-                                          Text('อัปโหลดรูปภาพล้มเหลว: $e')));
-                            }
-                          } finally {
-                            setDialogState(() => busy = false);
-                          }
-                        },
-                  child: const Text('เปลี่ยนรูปภาพ'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final LatLng? result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => MapScreen()),
-                    );
-                    if (result != null) {
-                      localSelectedLocation = result;
-                      setDialogState(() {});
-                    }
-                  },
-                  child: const Text('แก้ไขปักหมุดสถานที่'),
-                ),
-                if (localSelectedLocation != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6.0),
-                    child: Text(
-                        'ตำแหน่งใหม่: ${localSelectedLocation!.latitude.toStringAsFixed(6)}, ${localSelectedLocation!.longitude.toStringAsFixed(6)}'),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('ยกเลิก'),
-            ),
-            ElevatedButton(
-              onPressed: busy
-                  ? null
-                  : () async {
-                      // ตรวจสอบเบื้องต้น
-                      if (nameCtl.text.trim().isEmpty ||
-                          (carCountCtl.text.trim().isEmpty &&
-                              bikeCountCtl.text.trim().isEmpty)) {
-                        setDialogState(() {
-                          localNameError =
-                              'กรุณากรอกชื่อ และจำนวนที่จอดอย่างน้อย 1 ประเภท';
-                        });
-                        return;
-                      }
-
-                      setDialogState(() => busy = true);
-                      try {
-                        // ถ้าชื่อถูกแก้ ต้องเช็กว่าไม่ซ้ำ
-                        if (nameCtl.text.trim() != (data['name'] ?? '')) {
-                          final dup = await FirebaseFirestore.instance
-                              .collection('parking_slots')
-                              .where('name', isEqualTo: nameCtl.text.trim())
-                              .get();
-                          final existsOther =
-                              dup.docs.any((d) => d.id != docId);
-                          if (existsOther) {
-                            setDialogState(() {
-                              localNameError =
-                                  'ชื่อที่จอดรถนี้มีอยู่แล้ว กรุณาตั้งชื่อใหม่';
-                              busy = false;
-                            });
-                            return;
-                          }
-                        }
-
-                        final update = <String, dynamic>{
-                          'name': nameCtl.text.trim(),
-                          'type': localVehicleType.trim(),
-                          'car_count': int.tryParse(carCountCtl.text) ?? 0,
-                          'bike_count': int.tryParse(bikeCountCtl.text) ?? 0,
-                          'car_price': int.tryParse(carPriceCtl.text) ?? 0,
-                          'bike_price': int.tryParse(bikePriceCtl.text) ?? 0,
-                          'service_date': dateCtl.text,
-                          'service_time': timeCtl.text,
-                          'details': detailsCtl.text,
-                          'cctv_url': cctvUrlCtl.text.trim(),
-                          'bankName': bankNameCtl.text.trim(),
-                          'accountName': accountNameCtl.text.trim(),
-                          'bankAccount': bankAccountCtl.text.trim(),
-                        };
-                        if (localImageUrls.isNotEmpty) {
-                          update['image_urls'] = localImageUrls;
-                          update['image_url'] =
-                              localImageUrls.first; // เพื่อความเข้ากันได้
-                        }
-                        // เพิ่ม path ที่เพิ่มใหม่ (ถ้ามี) โดยไม่ซ้ำกับของเดิม
-                        final List<String> newPaths = localImagePaths
-                            .where((p) => !originalImagePaths.contains(p))
-                            .toList();
-                        if (newPaths.isNotEmpty) {
-                          update['image_paths'] =
-                              FieldValue.arrayUnion(newPaths);
-                        }
-                        if (localSelectedLocation != null) {
-                          update['location'] = GeoPoint(
-                              localSelectedLocation!.latitude,
-                              localSelectedLocation!.longitude);
-                          update['geohash'] = _encodeGeohash(
-                              localSelectedLocation!.latitude,
-                              localSelectedLocation!.longitude,
-                              precision: 9);
-                        }
-
-                        await FirebaseFirestore.instance
-                            .collection('parking_slots')
-                            .doc(docId)
-                            .update(update);
-
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('อัปเดตข้อมูลเรียบร้อย')));
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('อัปเดตล้มเหลว: $e')));
-                        }
-                      } finally {
-                        setDialogState(() => busy = false);
-                      }
-                    },
-              child: const Text('บันทึกการแก้ไข'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // Removed unused _buildEditDialog method (was unreferenced)
 }
 
 class AddParkingPage extends StatefulWidget {
@@ -1467,9 +993,11 @@ class _AddParkingPageState extends State<AddParkingPage> {
   void _setType(String token, bool selected) {
     bool car = vehicleType.contains('รถยนต์');
     bool bike = vehicleType.contains('มอเตอร์ไซค์');
-    if (token == 'รถยนต์')
+    if (token == 'รถยนต์') {
       car = selected;
-    else if (token == 'มอเตอร์ไซค์') bike = selected;
+    } else if (token == 'มอเตอร์ไซค์') {
+      bike = selected;
+    }
     final parts = <String>[];
     if (car) parts.add('รถยนต์');
     if (bike) parts.add('มอเตอร์ไซค์');
@@ -1655,6 +1183,7 @@ class _AddParkingPageState extends State<AddParkingPage> {
                   initialTime: openTime ?? const TimeOfDay(hour: 8, minute: 0),
                 );
                 if (ot == null) return;
+                if (!context.mounted) return;
                 final ct = await showTimePicker(
                   context: context,
                   initialTime:
@@ -1677,7 +1206,7 @@ class _AddParkingPageState extends State<AddParkingPage> {
                   style: TextStyle(fontWeight: FontWeight.w600)),
             ),
             DropdownButtonFormField<String>(
-              value: selectedBankName ??
+              initialValue: selectedBankName ??
                   (widget.bankNameController.text.isNotEmpty
                       ? widget.bankNameController.text
                       : null),
@@ -1786,6 +1315,7 @@ class _AddParkingPageState extends State<AddParkingPage> {
                       MaterialPageRoute(
                           builder: (context) => const MapScreen()),
                     );
+                    if (!mounted) return;
                     if (result != null) {
                       setState(() => selectedLocation = result);
                     }
@@ -2008,9 +1538,11 @@ class _EditParkingPageState extends State<EditParkingPage> {
   void _setType(String token, bool selected) {
     bool car = vehicleType.contains('รถยนต์');
     bool bike = vehicleType.contains('มอเตอร์ไซค์');
-    if (token == 'รถยนต์')
+    if (token == 'รถยนต์') {
       car = selected;
-    else if (token == 'มอเตอร์ไซค์') bike = selected;
+    } else if (token == 'มอเตอร์ไซค์') {
+      bike = selected;
+    }
     final parts = <String>[];
     if (car) parts.add('รถยนต์');
     if (bike) parts.add('มอเตอร์ไซค์');
@@ -2177,6 +1709,7 @@ class _EditParkingPageState extends State<EditParkingPage> {
                   context: context,
                   initialTime: openTime ?? const TimeOfDay(hour: 8, minute: 0));
               if (ot == null) return;
+              if (!context.mounted) return;
               final ct = await showTimePicker(
                   context: context,
                   initialTime:
@@ -2197,7 +1730,7 @@ class _EditParkingPageState extends State<EditParkingPage> {
               child: Text('ข้อมูลบัญชีรับเงิน',
                   style: TextStyle(fontWeight: FontWeight.w600))),
           DropdownButtonFormField<String>(
-            value: selectedBankName ??
+            initialValue: selectedBankName ??
                 (bankNameCtl.text.isNotEmpty ? bankNameCtl.text : null),
             items: const [
               DropdownMenuItem(value: 'กสิกร', child: Text('กสิกร')),

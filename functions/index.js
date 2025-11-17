@@ -1232,54 +1232,80 @@ exports.routeMatrix = onCall({ secrets: [GOOGLE_MAPS_API_KEY] }, async (request)
   return { distances: out, status: 'ok' };
 });
 
-// รวมคะแนนรีวิวลงในเอกสารแม่ parking_slots
-// เก็บค่า: rating_sum, rating_count, rating_avg เพื่อให้แอปอ่านได้เร็วและไม่ต้องเปิดสตรีมย่อย
-// Firestore trigger v2: ใช้รูปแบบ 'documents/<path>'
+// รวมคะแนนรีวิวลงในเอกสารแม่ parking_slots (atomic increments + fallback scan)
+// ใช้ FieldValue.increment ลด race condition และ หากไม่มีค่าเดิมจะสร้างใหม่
+// เส้นทางทริกเกอร์ v2 ต้องขึ้นต้นด้วย "documents/" ถูกต้องแล้ว
 exports.aggregateSlotRatings = onDocumentWritten(
   "documents/parking_slots/{slotId}/reviews/{reviewId}",
   async (event) => {
+    const slotId = event.params.slotId;
+    if (!slotId) return;
     try {
       const before = event.data?.before?.data() || null;
       const after = event.data?.after?.data() || null;
-      const slotId = event.params.slotId;
-      if (!slotId) return;
-
-      const db = admin.firestore();
-      const slotRef = db.collection('parking_slots').doc(String(slotId));
-      const snap = await slotRef.get();
-      const cur = snap.exists ? (snap.data() || {}) : {};
-      let sum = Number(cur.rating_sum || 0);
-      let count = Number(cur.rating_count || 0);
-
       const oldRating = before && typeof before.rating === 'number' ? Number(before.rating) : null;
       const newRating = after && typeof after.rating === 'number' ? Number(after.rating) : null;
+      const db = admin.firestore();
+      const slotRef = db.collection('parking_slots').doc(String(slotId));
+      const FieldValue = admin.firestore.FieldValue;
 
-      // กรณีสร้างใหม่
+      // ถ้าสร้างใหม่
       if (oldRating == null && newRating != null) {
-        sum += newRating;
-        count += 1;
+        await slotRef.set({
+          rating_sum: FieldValue.increment(newRating),
+          rating_count: FieldValue.increment(1),
+        }, { merge: true });
       }
-      // กรณีอัปเดตค่า
+      // ถ้าอัปเดต
       else if (oldRating != null && newRating != null) {
-        sum += (newRating - oldRating);
+        const delta = newRating - oldRating;
+        if (delta !== 0) {
+          await slotRef.set({
+            rating_sum: FieldValue.increment(delta),
+          }, { merge: true });
+        }
       }
-      // กรณีลบออก
+      // ถ้าลบ
       else if (oldRating != null && newRating == null) {
-        sum -= oldRating;
-        count -= 1;
+        await slotRef.set({
+          rating_sum: FieldValue.increment(-oldRating),
+          rating_count: FieldValue.increment(-1),
+        }, { merge: true });
       }
 
-      if (count < 0) count = 0;
-      if (sum < 0) sum = 0;
-      const avg = count > 0 ? sum / count : 0;
-
-      await slotRef.set({
-        rating_sum: sum,
-        rating_count: count,
-        rating_avg: avg,
-      }, { merge: true });
+      // อ่านค่าล่าสุดเพื่อนำไปคำนวณ avg (ใช้ transaction เพื่อความสม่ำเสมอ)
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(slotRef);
+        const data = snap.exists ? (snap.data() || {}) : {};
+        let sum = Number(data.rating_sum || 0);
+        let count = Number(data.rating_count || 0);
+        if (count < 0) count = 0; // safety
+        if (sum < 0) sum = 0;     // safety
+        let avg = count > 0 ? sum / count : 0;
+        // จำกัด avg ไม่ให้หลุดช่วง
+        if (!Number.isFinite(avg)) avg = 0;
+        tx.set(slotRef, { rating_avg: avg }, { merge: true });
+      });
     } catch (e) {
       console.error('aggregateSlotRatings error', e);
+      // fallback สแกนทั้งคอลเล็กชันกรณีค่าติดลบหรือ transaction fail
+      try {
+        const db = admin.firestore();
+        const reviewsSnap = await db.collection('parking_slots').doc(String(slotId)).collection('reviews').get();
+        let sum = 0; let count = 0;
+        for (const r of reviewsSnap.docs) {
+          const val = r.data()?.rating;
+          if (typeof val === 'number') { sum += Number(val); count++; }
+        }
+        const avg = count > 0 ? sum / count : 0;
+        await db.collection('parking_slots').doc(String(slotId)).set({
+          rating_sum: sum,
+          rating_count: count,
+          rating_avg: avg,
+        }, { merge: true });
+      } catch (e2) {
+        console.error('aggregateSlotRatings fallback error', e2);
+      }
     }
   }
 );

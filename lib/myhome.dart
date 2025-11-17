@@ -959,16 +959,11 @@ class _MyHomeState extends State<MyHome> {
               if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
               final path =
                   'booking_images/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
-              // ignore: avoid_print
-              print('UPLOAD booking_images path=$path uid=$uid');
               final ref = FirebaseStorage.instance.ref(path);
               // ตรวจ metadata ก่อนส่ง
               final metadata = SettableMetadata(customMetadata: {
                 'ownerUid': uid,
               });
-              // ignore: avoid_print
-              print(
-                  'UPLOAD booking_images metadata=${metadata.customMetadata}');
               final task = await ref.putFile(
                 File(img.path),
                 metadata,
@@ -979,8 +974,6 @@ class _MyHomeState extends State<MyHome> {
                 busy = false;
               });
             } on FirebaseException catch (e) {
-              // ignore: avoid_print
-              print('UPLOAD ERROR code=${e.code} message=${e.message}');
               setD(() => busy = false);
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
@@ -1024,8 +1017,6 @@ class _MyHomeState extends State<MyHome> {
                     .showSnackBar(const SnackBar(content: Text('จองสำเร็จ')));
               }
             } on FirebaseException catch (e) {
-              // ignore: avoid_print
-              print('BOOKING WRITE ERROR code=${e.code} message=${e.message}');
               setD(() => busy = false);
               if (ctx.mounted) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
@@ -1157,12 +1148,15 @@ class _MyHomeState extends State<MyHome> {
                               DateTime? parseDate(String s) {
                                 final t = s.trim();
                                 final seg = t.split('/');
-                                if (seg.length != 3) return null;
+                                if (seg.length != 3) {
+                                  return null;
+                                }
                                 final d = int.tryParse(seg[0]);
                                 final m = int.tryParse(seg[1]);
                                 final y = int.tryParse(seg[2]);
-                                if (d == null || m == null || y == null)
+                                if (d == null || m == null || y == null) {
                                   return null;
+                                }
                                 return DateTime(y, m, d);
                               }
 
