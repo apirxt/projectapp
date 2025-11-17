@@ -40,9 +40,11 @@ const adminOnly = $("adminOnly");
 const notAdmin = $("notAdmin");
 const me = $("me");
 const hostRequestsCard = $("hostRequests");
+const extRequestsCard = $("extRequests");
 const tabSwitcher = $("tabSwitcher");
 const tabUsers = $("tabUsers");
 const tabRequests = $("tabRequests");
+const tabExtRequests = $("tabExtRequests");
 const emailInput = $("email");
 const passwordInput = $("password");
 const btnSignIn = $("btnSignIn");
@@ -54,15 +56,27 @@ function showTab(tab) {
   if (tab === 'users') {
     adminOnly.style.display = 'block';
     hostRequestsCard.style.display = 'none';
+    extRequestsCard.style.display = 'none';
     tabUsers.classList.add('active');
     tabRequests.classList.remove('active');
+    tabExtRequests.classList.remove('active');
     loadUsers();
   } else {
     adminOnly.style.display = 'none';
-    hostRequestsCard.style.display = 'block';
     tabUsers.classList.remove('active');
-    tabRequests.classList.add('active');
-    loadRequests();
+    if (tab === 'requests') {
+      hostRequestsCard.style.display = 'block';
+      extRequestsCard.style.display = 'none';
+      tabRequests.classList.add('active');
+      tabExtRequests.classList.remove('active');
+      loadRequests();
+    } else if (tab === 'ext') {
+      hostRequestsCard.style.display = 'none';
+      extRequestsCard.style.display = 'block';
+      tabRequests.classList.remove('active');
+      tabExtRequests.classList.add('active');
+      loadExtRequests();
+    }
   }
 }
 
@@ -78,6 +92,36 @@ function renderUsers(items) {
     const isAdmin = Boolean(u.customClaims?.isAdmin);
     const canHost = Boolean(u.customClaims?.canHostParking);
     const hostStatus = u.hostStatus || "-";
+    const hostStatusTh = (() => {
+      switch (String(hostStatus).toLowerCase()) {
+        case 'pending':
+          return 'รอตรวจสอบ';
+        case 'approved':
+          return 'ใช้งานอยู่';
+        case 'rejected':
+          return 'ปฏิเสธ';
+        case 'active':
+          return 'อนุมัติ';
+        case 'expired':
+          return 'หมดอายุ';
+        default:
+          return '-';
+      }
+    })();
+    const hostStatusCls = (() => {
+      switch (String(hostStatus).toLowerCase()) {
+        case 'pending':
+          return 'badge-nohost'; // ส้ม
+        case 'approved':
+        case 'active':
+          return 'badge-host'; // เขียว
+        case 'rejected':
+        case 'expired':
+          return 'badge-disabled'; // แดง
+        default:
+          return '';
+      }
+    })();
     const expStr = u.hostActiveUntil ? new Date(u.hostActiveUntil).toLocaleString() : "-";
     const roleBadge = isAdmin ? `<span class="badge badge-admin">Admin</span>` : `<span class="badge badge-user">User</span>`;
     const hostBadge = canHost ? `<span class="badge badge-host">ปล่อยเช่าได้</span>` : `<span class="badge badge-nohost">หาเช่าอย่างเดียว</span>`;
@@ -88,7 +132,7 @@ function renderUsers(items) {
       <td style="font-family:monospace">${u.uid}</td>
       <td>${roleBadge}</td>
       <td>${hostBadge}</td>
-      <td>${hostStatus}</td>
+      <td>${hostStatusTh === '-' ? '-' : `<span class="badge ${hostStatusCls}">${hostStatusTh}</span>`}</td>
       <td>${expStr}</td>
       <td>${activeBadge}</td>
       <td>
@@ -96,7 +140,6 @@ function renderUsers(items) {
           <button class="btn btn-outline btn-small" data-act="admin" data-uid="${u.uid}" data-val="${!isAdmin}">${isAdmin ? "ลบสิทธิ์แอดมิน" : "ตั้งเป็นแอดมิน"}</button>
           <button class="btn btn-outline btn-small" data-act="disable" data-uid="${u.uid}" data-val="${!u.disabled}">${u.disabled ? "เปิดใช้งาน" : "ปิดใช้งาน"}</button>
           <button class="btn btn-outline btn-small" data-act="host" data-uid="${u.uid}" data-val="${!canHost}">${canHost ? "ปลดสิทธิ์ปล่อยเช่า" : "ให้สิทธิ์ปล่อยเช่า"}</button>
-          <button class="btn btn-primary btn-small" data-act="extend" data-uid="${u.uid}">ต่ออายุ +10 นาที</button>
         </div>
       </td>
       <td>
@@ -142,9 +185,6 @@ usersTbody.addEventListener("click", async (e) => {
     } else if (act === "host") {
       const setUserHostPermission = httpsCallable(functions, "setUserHostPermission");
       await setUserHostPermission({ uid, canHost: val });
-    } else if (act === "extend") {
-      const extendHostPermission = httpsCallable(functions, "extendHostPermission");
-      await extendHostPermission({ uid, minutes: 10 });
     } else if (act === "pwReset") {
       const email = btn.getAttribute("data-email");
       if (!email) return alert("ไม่มีอีเมล");
@@ -184,17 +224,7 @@ $("btnRefresh").addEventListener("click", async () => {
   await loadUsers();
 });
 
-// ปุ่มคำนวณคะแนนรีวิวทั้งหมด (Backfill)
-$("btnBackfillRatings").addEventListener("click", async () => {
-  try {
-    if (!confirm('ยืนยันคำนวณคะแนนรีวิวใหม่ทั้งหมด?')) return;
-    const fn = httpsCallable(functions, 'backfillSlotRatings');
-    const { data } = await fn();
-    alert(`คำนวณเสร็จสิ้น อัปเดต ${data.updated} รายการ`);
-  } catch (e) {
-    alert(e.message || e);
-  }
-});
+// ปุ่มคำนวณคะแนนรีวิวทั้งหมด ถูกยกเลิกการใช้งาน (คำนวณอัตโนมัติในแอปแล้ว)
 
 // ปุ่มลบการจองที่ไม่ถูกต้อง (slot ถูกลบไปแล้ว)
 $("btnCleanupBookings").addEventListener("click", async () => {
@@ -234,6 +264,34 @@ async function loadRequests() {
   }
 }
 
+// ส่วนโหลดคำขอต่ออายุสิทธิ์
+const extRequestsTbody = $("extRequestsTbody");
+async function loadExtRequests() {
+  const listExt = httpsCallable(functions, 'listExtensionRequests');
+  const { data } = await listExt({ limit: 100 });
+  extRequestsTbody.innerHTML = "";
+  const items = (data.requests || []).filter(r => !r.status || r.status === 'pending');
+  for (const r of items) {
+    const tr = document.createElement("tr");
+    const ts = r.createdAt ? new Date(r.createdAt).toLocaleString() : "-";
+    const slip = r.slipUrl ? `<img data-slp="${r.slipUrl}" src="${r.slipUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;cursor:pointer" />` : '<span class="muted">-</span>';
+    tr.innerHTML = `
+      <td>${r.email ?? "-"}</td>
+      <td>${r.displayName ?? "-"}</td>
+      <td>${r.fullName ?? "-"}</td>
+      <td>${r.phone ?? "-"}</td>
+      <td>${slip}</td>
+      <td style="font-family:monospace">${r.uid}</td>
+      <td>${ts}</td>
+      <td>
+        <button class="btn btn-primary btn-small" data-act="ext-approve" data-id="${r.id}">อนุมัติ</button>
+        <button class="btn btn-outline btn-small" data-act="ext-reject" data-id="${r.id}">ปฏิเสธ</button>
+      </td>
+    `;
+    extRequestsTbody.appendChild(tr);
+  }
+}
+
 //ส่วนอีเวนต์คลิกอนุมัติ/ปฏิเสธคำขอ Host
 requestsTbody.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
@@ -257,6 +315,13 @@ requestsTbody.addEventListener("click", async (e) => {
 $("btnReqRefresh").addEventListener("click", async () => {
   await loadRequests();
 });
+
+// ปุ่มรีเฟรชคำขอต่ออายุ
+$("btnExtRefresh").addEventListener("click", async () => {
+  await loadExtRequests();
+});
+
+// ปุ่มย้ายคำขอเก่า ถูกยกเลิกการใช้งาน
 
 //ส่วนปุ่มเข้าสู่ระบบ
 btnSignIn.addEventListener("click", async () => {
@@ -321,6 +386,7 @@ onAuthStateChanged(auth, async (user) => {
 // คลิกเปลี่ยนแท็บ
 tabUsers.addEventListener('click', () => showTab('users'));
 tabRequests.addEventListener('click', () => showTab('requests'));
+tabExtRequests.addEventListener('click', () => showTab('ext'));
 
 // Modal preview รูปสลิป
 const imgModal = $("imgModal");
@@ -344,5 +410,30 @@ imgModal?.addEventListener('click', (e) => {
   if (e.target === imgModal) {
     imgModal.style.display = 'none';
     imgPreview.src = '';
+  }
+});
+
+// อีเวนต์อนุมัติ/ปฏิเสธคำขอต่ออายุ + preview รูป
+extRequestsTbody.addEventListener('click', async (e) => {
+  const img = e.target.closest('img[data-slp]');
+  if (img) {
+    const url = img.getAttribute('data-slp');
+    imgPreview.src = url;
+    imgModal.style.display = 'flex';
+    return;
+  }
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const act = btn.getAttribute('data-act');
+  try {
+    const decide = httpsCallable(functions, 'decideExtensionRequest');
+    if (act === 'ext-approve') {
+      await decide({ reqId: btn.getAttribute('data-id'), approve: true, minutes: 10 });
+    } else if (act === 'ext-reject') {
+      await decide({ reqId: btn.getAttribute('data-id'), approve: false });
+    }
+    await loadExtRequests();
+  } catch (err) {
+    alert(err.message || err);
   }
 });
