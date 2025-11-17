@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -94,23 +95,44 @@ class _MySupportState extends State<MySupport> {
                                       onPressed: () => _openRegisterDialog(),
                                       child: const Text('ลงทะเบียน'),
                                     )
+                                  else if ((userData?['registration']
+                                          ?['provider'] ==
+                                      'manual'))
+                                    ElevatedButton(
+                                      onPressed: () => _openExtendDialog(),
+                                      child: const Text('ต่ออายุสิทธิ์'),
+                                    ),
                                 ],
                               ),
                               const SizedBox(height: 6),
                               const Text(
                                   'หลังส่งคำขอ แอดมินจะตรวจสอบและอนุมัติให้ใช้งาน'),
-                              if (!approved)
+                              if (!approved &&
+                                  (userData?['hostStatus'] == 'requested'))
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6.0),
+                                  child: Row(
+                                    children: const [
+                                      Icon(Icons.hourglass_top,
+                                          size: 16, color: Colors.orange),
+                                      SizedBox(width: 6),
+                                      Text('สถานะคำขอ: กำลังตรวจสอบ'),
+                                    ],
+                                  ),
+                                ),
+                              if ((userData?['registration']?['provider'] ==
+                                  'manual'))
                                 StreamBuilder<
                                     QuerySnapshot<Map<String, dynamic>>>(
                                   stream: FirebaseFirestore.instance
-                                      .collection('host_rights_requests')
-                                      .where('userId', isEqualTo: user.uid)
-                                      .orderBy('createdAt', descending: true)
+                                      .collection('host_extension_requests')
+                                      .where('uid', isEqualTo: user.uid)
+                                      .where('status', isEqualTo: 'pending')
                                       .limit(1)
                                       .snapshots(),
                                   builder: (context, rs) {
                                     final waiting =
-                                        (rs.data?.docs.isNotEmpty ?? false);
+                                        rs.data?.docs.isNotEmpty ?? false;
                                     return waiting
                                         ? Padding(
                                             padding:
@@ -121,7 +143,8 @@ class _MySupportState extends State<MySupport> {
                                                     size: 16,
                                                     color: Colors.orange),
                                                 SizedBox(width: 6),
-                                                Text('สถานะคำขอ: กำลังตรวจสอบ'),
+                                                Text(
+                                                    'สถานะคำขอ: รอต่ออายุอนุมัติ'),
                                               ],
                                             ),
                                           )
@@ -246,8 +269,11 @@ class _MySupportState extends State<MySupport> {
             } catch (e) {
               setD(() => busy = false);
               if (ctx.mounted) {
+                final msg = e.toString().contains('unauthorized')
+                    ? 'อัปโหลดรูปไม่สำเร็จ: ไม่มีสิทธิ์เข้าถึง (ตรวจสอบว่าล็อกอินอยู่ และได้ deploy storage.rules แล้ว)'
+                    : 'อัปโหลดรูปไม่สำเร็จ: $e';
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')),
+                  SnackBar(content: Text(msg)),
                 );
               }
             }
@@ -258,14 +284,12 @@ class _MySupportState extends State<MySupport> {
               setD(() => busy = true);
               final uid = FirebaseAuth.instance.currentUser?.uid;
               if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
-              await FirebaseFirestore.instance
-                  .collection('host_rights_requests')
-                  .add({
-                'userId': uid,
-                'name': nameCtl.text.trim(),
+              final fn = FirebaseFunctions.instance
+                  .httpsCallable('submitHostRegistration');
+              await fn.call({
+                'fullName': nameCtl.text.trim(),
                 'phone': phoneCtl.text.trim(),
-                'imageUrl': imageUrl,
-                'createdAt': FieldValue.serverTimestamp(),
+                'slipUrl': imageUrl,
               });
               if (ctx.mounted) {
                 Navigator.pop(ctx);
@@ -307,6 +331,179 @@ class _MySupportState extends State<MySupport> {
                   ),
                   const SizedBox(height: 12),
                   // ส่วนแสดงบัญชีของทางแอป (ตำแหน่งเดียวกับหน้าต่างจอง)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('ธนาคาร : กสิกร'),
+                            Text('ชื่อบัญชี : อภิรัตน์ โอชา'),
+                            Text('เลขบัญชี : 054-8-52216-1',
+                                style: TextStyle(fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                await Clipboard.setData(
+                                    const ClipboardData(text: appAccountNo));
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('คัดลอกเลขบัญชีแล้ว')),
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: const Text('คัดลอก'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (imageUrl != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(imageUrl!,
+                          height: 120, fit: BoxFit.cover),
+                    ),
+                  const SizedBox(height: 6),
+                  ElevatedButton.icon(
+                    onPressed: busy ? null : pickAndUpload,
+                    icon: const Icon(Icons.image),
+                    label: Text(
+                        imageUrl == null ? 'แนบรูปสลิป' : 'เปลี่ยนรูปสลิป'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy ? null : () => Navigator.pop(ctx),
+                child: const Text('ยกเลิก'),
+              ),
+              ElevatedButton(
+                onPressed: isValid() ? submit : null,
+                child: busy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('ส่งคำขอ'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _openExtendDialog() async {
+    final nameCtl = TextEditingController();
+    final phoneCtl = TextEditingController();
+    String? imageUrl;
+    bool busy = false;
+
+    bool isValid() {
+      final name = nameCtl.text.trim();
+      final phone = phoneCtl.text.trim();
+      final validPhone = RegExp(r'^\d{9,10}$').hasMatch(phone);
+      return name.isNotEmpty && validPhone && imageUrl != null && !busy;
+    }
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setD) {
+          Future<void> pickAndUpload() async {
+            try {
+              setD(() => busy = true);
+              final ImagePicker picker = ImagePicker();
+              final XFile? img =
+                  await picker.pickImage(source: ImageSource.gallery);
+              if (img == null) {
+                setD(() => busy = false);
+                return;
+              }
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              final path =
+                  'host_extensions/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
+              final ref = FirebaseStorage.instance.ref(path);
+              final task = await ref.putFile(
+                File(img.path),
+                SettableMetadata(customMetadata: {'ownerUid': uid}),
+              );
+              final url = await task.ref.getDownloadURL();
+              setD(() {
+                imageUrl = url;
+                busy = false;
+              });
+            } catch (e) {
+              setD(() => busy = false);
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')),
+                );
+              }
+            }
+          }
+
+          Future<void> submit() async {
+            try {
+              setD(() => busy = true);
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              final fn = FirebaseFunctions.instance
+                  .httpsCallable('submitHostExtension');
+              await fn.call({
+                'fullName': nameCtl.text.trim(),
+                'phone': phoneCtl.text.trim(),
+                'slipUrl': imageUrl,
+              });
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('ส่งคำขอต่ออายุเรียบร้อย')),
+                );
+              }
+            } catch (e) {
+              setD(() => busy = false);
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('ส่งคำขอไม่สำเร็จ: $e')),
+                );
+              }
+            }
+          }
+
+          const String appAccountNo = '054-8-52216-1';
+
+          return AlertDialog(
+            title: const Text('ต่ออายุสิทธิ์ปล่อยเช่า'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtl,
+                    decoration:
+                        const InputDecoration(labelText: 'ชื่อ-นามสกุล'),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: phoneCtl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                        labelText: 'เบอร์โทร (9–10 หลัก)'),
+                    onChanged: (_) => setD(() {}),
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(

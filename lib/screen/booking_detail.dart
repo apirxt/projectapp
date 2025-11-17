@@ -59,7 +59,14 @@ class BookingDetailScreen extends StatelessWidget {
             return const Center(child: Text('ไม่พบข้อมูลที่จอดรถ'));
           }
           final data = snap.data!.data() as Map<String, dynamic>;
+          final List<String> images = ((data['image_urls'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              <String>[]);
           final imageUrl = (data['image_url'] ?? '') as String;
+          if (images.isEmpty && imageUrl.isNotEmpty) {
+            images.add(imageUrl);
+          }
           final type = (data['type'] ?? '-') as String;
           final carCount = data['car_count'] ?? 0;
           final carPrice = data['car_price'] ?? 0;
@@ -75,10 +82,24 @@ class BookingDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (imageUrl.isNotEmpty)
-                  Center(
-                    child: Image.network(imageUrl,
-                        height: 200, width: double.infinity, fit: BoxFit.cover),
+                if (images.isNotEmpty)
+                  SizedBox(
+                    height: 200,
+                    width: double.infinity,
+                    child: PageView.builder(
+                      itemCount: images.length,
+                      physics: const PageScrollPhysics(),
+                      allowImplicitScrolling: true,
+                      itemBuilder: (_, i) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: Image.network(
+                          images[i],
+                          height: 200,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
                   ),
                 const SizedBox(height: 10),
                 Text('ที่จอด: ${data['name'] ?? '-'}',
@@ -86,10 +107,14 @@ class BookingDetailScreen extends StatelessWidget {
                         fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Text('ประเภท: $type'),
-                Text('จำนวนรถยนต์: $carCount'),
-                Text('ราคาที่จอดรถยนต์: $carPrice บาท/ชั่วโมง'),
-                Text('จำนวนมอเตอร์ไซค์: $bikeCount'),
-                Text('ราคาที่จอดมอเตอร์ไซค์: $bikePrice บาท/ชั่วโมง'),
+                if (type.contains('รถยนต์')) ...[
+                  Text('จำนวนรถยนต์: $carCount'),
+                  Text('ราคาที่จอดรถยนต์: $carPrice บาท/ชั่วโมง'),
+                ],
+                if (type.contains('มอเตอร์ไซค์')) ...[
+                  Text('จำนวนมอเตอร์ไซค์: $bikeCount'),
+                  Text('ราคาที่จอดมอเตอร์ไซค์: $bikePrice บาท/ชั่วโมง'),
+                ],
                 const SizedBox(height: 6),
                 Text('วันที่เปิดให้บริการ: $serviceDate'),
                 Text('เวลาที่เปิดให้บริการ: $serviceTime'),

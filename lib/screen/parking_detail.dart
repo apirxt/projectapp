@@ -17,11 +17,19 @@ class ParkingDetail extends StatefulWidget {
 class _ParkingDetailState extends State<ParkingDetail> {
   int _selectedStars = 0;
   final TextEditingController _commentController = TextEditingController();
+  late final PageController _pageController;
 
   @override
   void dispose() {
     _commentController.dispose();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
   }
 
   @override
@@ -41,16 +49,37 @@ class _ParkingDetailState extends State<ParkingDetail> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (parkingData['image_url'] != null &&
-                  parkingData['image_url'].isNotEmpty)
-                Center(
-                  child: Image.network(
-                    parkingData['image_url'],
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+              // แกลเลอรีภาพ
+              Builder(builder: (context) {
+                final List<String> imgs = ((parkingData['image_urls'] as List?)
+                        ?.map((e) => e.toString())
+                        .toList() ??
+                    <String>[]);
+                final String single =
+                    (parkingData['image_url'] ?? '').toString();
+                if (imgs.isEmpty && single.isNotEmpty) {
+                  imgs.add(single);
+                }
+                if (imgs.isEmpty) return const SizedBox.shrink();
+                return SizedBox(
+                  height: 200,
+                  width: double.infinity,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: imgs.length,
+                    physics: const PageScrollPhysics(),
+                    allowImplicitScrolling: true,
+                    itemBuilder: (_, i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Image.network(
+                        imgs[i],
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                   ),
-                ),
+                );
+              }),
+
               const SizedBox(height: 10),
               Text(
                 'ที่จอดรถ: ${parkingData['name'] ?? 'ไม่มีข้อมูล'}',
@@ -60,15 +89,27 @@ class _ParkingDetailState extends State<ParkingDetail> {
               const SizedBox(height: 5),
               Text('ประเภท: ${parkingData['type'] ?? 'ไม่มีข้อมูล'}\n'),
               const SizedBox(height: 5),
-              Text('จำนวนรถยนต์: ${parkingData['car_count'] ?? 0}'),
-              const SizedBox(height: 5),
-              Text(
-                  'ราคาที่จอดรถยนต์: ${parkingData['car_price'] ?? 0} บาท/ชั่วโมง\n'),
-              const SizedBox(height: 5),
-              Text('จำนวนมอเตอร์ไซค์: ${parkingData['bike_count'] ?? 0}'),
-              const SizedBox(height: 5),
-              Text(
-                  'ราคาที่จอดมอเตอร์ไซค์: ${parkingData['bike_price'] ?? 0} บาท/ชั่วโมง\n'),
+              Builder(builder: (_) {
+                final t = (parkingData['type'] ?? '').toString();
+                final List<Widget> children = [];
+                if (t.contains('รถยนต์')) {
+                  children.add(
+                      Text('จำนวนรถยนต์: ${parkingData['car_count'] ?? 0}'));
+                  children.add(const SizedBox(height: 5));
+                  children.add(Text(
+                      'ราคาที่จอดรถยนต์: ${parkingData['car_price'] ?? 0} บาท/ชั่วโมง\n'));
+                }
+                if (t.contains('มอเตอร์ไซค์')) {
+                  children.add(Text(
+                      'จำนวนมอเตอร์ไซค์: ${parkingData['bike_count'] ?? 0}'));
+                  children.add(const SizedBox(height: 5));
+                  children.add(Text(
+                      'ราคาที่จอดมอเตอร์ไซค์: ${parkingData['bike_price'] ?? 0} บาท/ชั่วโมง\n'));
+                }
+                return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: children);
+              }),
               const SizedBox(height: 5),
               Text(
                   'วันที่เปิดให้บริการ: ${parkingData['service_date'] ?? 'ไม่มีข้อมูล'}'),
@@ -105,89 +146,21 @@ class _ParkingDetailState extends State<ParkingDetail> {
                 ),
               ],
               const SizedBox(height: 20),
-              // เพิ่ม "รายละเอียดเพิ่มเติม" ใต้แผนที่ และก่อนส่วนรีวิว
+              // เพิ่ม "รายละเอียดเพิ่มเติม" ใต้แผนที่
               const Text(
                 'รายละเอียดเพิ่มเติม:',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 5),
               Text(parkingData['details'] ?? 'ไม่มีข้อมูลเพิ่มเติม'),
-              const SizedBox(height: 20),
-              // สรุปคะแนน (ค่าเฉลี่ยและจำนวนรีวิว)
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('parking_slots')
-                    .doc(widget.docId)
-                    .collection('reviews')
-                    .orderBy('timestamp', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return const Text('ไม่สามารถโหลดรีวิวได้');
-                  }
-                  final docs = snapshot.data?.docs ?? [];
-                  double avg = 0;
-                  if (docs.isNotEmpty) {
-                    final ratings =
-                        docs.map((d) => (d["rating"] ?? 0).toDouble()).toList();
-                    avg = ratings.reduce((a, b) => a + b) / ratings.length;
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          _buildStarRow(avg.round()),
-                          const SizedBox(width: 8),
-                          Text(
-                            docs.isEmpty
-                                ? 'ยังไม่มีการให้คะแนน'
-                                : '${avg.toStringAsFixed(1)} จาก ${docs.length} รีวิว',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'รีวิวล่าสุด',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 6),
-                      if (docs.isEmpty)
-                        const Text('ยังไม่มีความคิดเห็น')
-                      else
-                        Column(
-                          children: docs.take(5).map((d) {
-                            final rating = (d['rating'] ?? 0).toInt();
-                            final comment = (d['comment'] ?? '') as String;
-                            final ts = (d['timestamp'] as Timestamp?)?.toDate();
-                            return Card(
-                              color: Colors.black12,
-                              child: ListTile(
-                                dense: true,
-                                leading: _buildStarRow(rating, size: 16),
-                                title: Text(comment.isEmpty ? '-' : comment),
-                                subtitle:
-                                    ts != null ? Text('${ts.toLocal()}') : null,
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  );
-                },
-              ),
 
+              // ย้ายส่วนให้คะแนนขึ้นมาก่อนรายการความคิดเห็น
               const SizedBox(height: 16),
               const Text(
-                'ให้คะแนนและแสดงความคิดเห็น',
+                'แสดงความคิดเห็น/ให้คะแนนดาว',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              // ส่วนให้คะแนนด้วยดาว
               Row(
                 children: List.generate(5, (i) {
                   final starIndex = i + 1;
@@ -218,7 +191,81 @@ class _ParkingDetailState extends State<ParkingDetail> {
                   onPressed: _submitReview,
                 ),
               ),
-              // เดิมส่วน "รายละเอียดเพิ่มเติม" อยู่ท้ายสุด จึงย้ายขึ้นไปแล้ว
+
+              const SizedBox(height: 20),
+              // สรุปคะแนน + ความคิดเห็น/คะแนนดาว (พร้อมเลื่อนดูได้)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('parking_slots')
+                    .doc(widget.docId)
+                    .collection('reviews')
+                    .orderBy('timestamp', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return const Text('ไม่สามารถโหลดรีวิวได้');
+                  }
+                  final docs = snapshot.data?.docs ?? [];
+                  double avg = 0;
+                  if (docs.isNotEmpty) {
+                    final ratings =
+                        docs.map((d) => (d['rating'] ?? 0).toDouble()).toList();
+                    avg = ratings.reduce((a, b) => a + b) / ratings.length;
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (docs.isNotEmpty)
+                        Row(
+                          children: [
+                            _buildStarRow(avg.round()),
+                            const SizedBox(width: 8),
+                            Text(
+                                '${avg.toStringAsFixed(1)} จาก ${docs.length} รีวิว'),
+                          ],
+                        ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'ความคิดเห็น/คะแนนดาว',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      if (docs.isEmpty)
+                        const Text('ยังไม่มีความคิดเห็น')
+                      else
+                        SizedBox(
+                          height: 240,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: docs.length,
+                            itemBuilder: (context, idx) {
+                              final d = docs[idx];
+                              final rating = (d['rating'] ?? 0).toInt();
+                              final comment = (d['comment'] ?? '') as String;
+                              final ts =
+                                  (d['timestamp'] as Timestamp?)?.toDate();
+                              return Card(
+                                color: Colors.black12,
+                                child: ListTile(
+                                  dense: true,
+                                  leading: _buildStarRow(rating, size: 16),
+                                  title: Text(comment.isEmpty ? '-' : comment),
+                                  subtitle: ts != null
+                                      ? Text('${ts.toLocal()}')
+                                      : null,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -258,11 +305,11 @@ class _ParkingDetailState extends State<ParkingDetail> {
         'comment': _commentController.text.trim(),
         'timestamp': FieldValue.serverTimestamp(),
       };
-      final ref = FirebaseFirestore.instance
-          .collection('parking_slots')
-          .doc(widget.docId)
-          .collection('reviews');
-      await ref.add(review);
+      final slots = FirebaseFirestore.instance.collection('parking_slots');
+      final slotRef = slots.doc(widget.docId);
+
+      // บันทึกรีวิว (การรวมคะแนนจะทำอัตโนมัติด้วย Cloud Functions trigger)
+      await slotRef.collection('reviews').add(review);
       if (!mounted) {
         return; // กันการเรียกเมธอดของ State (เช่น setState) ถ้า widget ถูกถอดแล้ว
       }

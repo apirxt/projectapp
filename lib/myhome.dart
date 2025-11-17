@@ -126,7 +126,7 @@ class _MyHomeState extends State<MyHome> {
                         _searchLng = loc.longitude;
                         _searchPlaceLabel = q;
                         _radiusMeters =
-                            null; // โหมดสถานที่: ไม่ใช้ตัวเลือกระยะผู้ใช้
+                            1000; // โหมดสถานที่: ตั้งค่าเริ่มต้น 1 กม.
                         _searchQuery = q.toLowerCase();
                       });
                     } catch (_) {
@@ -220,14 +220,14 @@ class _MyHomeState extends State<MyHome> {
                     }
                   }
 
-                  // ใช้ตัวกรองระยะทางเมื่อมีทั้งรัศมีและตำแหน่งปัจจุบัน
+                  // ตัวกรองรัศมีเบื้องต้น
+                  // - โหมดค้นหาสถานที่: ยังไม่กรอง (ไปกรองด้วยเส้นทางจริงภายหลัง)
+                  // - โหมดตำแหน่งปัจจุบัน: ยังไม่กรองตรงนี้ ปล่อยไปกรองด้วยระยะเส้นทางจริงภายหลัง
                   bool passRadius = true;
                   if (_isSearchByPlace) {
-                    // โหมดสถานที่: ล็อกที่ 1 กม.
-                    passRadius = (distance != null) && (distance <= 1000);
+                    passRadius = true; // รอกรองด้วย routeMeters ภายหลัง
                   } else if (_currentPosition != null) {
-                    final double limit = _radiusMeters ?? 1000;
-                    passRadius = (distance != null) && (distance <= limit);
+                    passRadius = true; // รอกรองด้วย routeMeters ภายหลัง
                   }
 
                   if (matchesText && passRadius) {
@@ -244,7 +244,7 @@ class _MyHomeState extends State<MyHome> {
                   return FutureBuilder<List<int?>>(
                     future: _fetchRouteDistances(items),
                     builder: (context, snapRoute) {
-                      final listToRender =
+                      List<Map<String, dynamic>> listToRender =
                           List<Map<String, dynamic>>.from(items);
                       final routeMeters = snapRoute.data;
                       final useRoute = routeMeters != null &&
@@ -258,6 +258,16 @@ class _MyHomeState extends State<MyHome> {
                         }
                       }
 
+                      // เมื่อมีค่าเส้นทางจริง ให้กรองตามรัศมี (เริ่มต้น 1 กม.) ด้วย routeMeters
+                      if (useRoute) {
+                        final int limitMeters = (_radiusMeters ?? 1000).toInt();
+                        listToRender = listToRender
+                            .where((e) =>
+                                (e['routeMeters'] as int?) != null &&
+                                (e['routeMeters'] as int) <= limitMeters)
+                            .toList();
+                      }
+
                       if (useRoute) {
                         listToRender.sort((a, b) {
                           final ra = (a['routeMeters'] as int?) ?? 1 << 30;
@@ -265,14 +275,11 @@ class _MyHomeState extends State<MyHome> {
                           return ra.compareTo(rb);
                         });
                       } else {
-                        // ทางเลือกสำรอง: เรียงตามระยะทางเส้นตรง
-                        listToRender.sort((a, b) {
-                          final da =
-                              (a['distance'] as double?) ?? double.infinity;
-                          final db =
-                              (b['distance'] as double?) ?? double.infinity;
-                          return da.compareTo(db);
-                        });
+                        // ถ้ายังไม่คำนวณเส้นทางจริง แสดงตัวโหลดและรอผล เพื่อกันแสดงรายการเกินรัศมี
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
                       }
 
                       final showLoading = snapRoute.connectionState ==
@@ -296,7 +303,66 @@ class _MyHomeState extends State<MyHome> {
                   );
                 }
 
-                // โหมดค้นหาจากสถานที่ หรือไม่มีตำแหน่งปัจจุบัน: เรียงตามระยะเส้นตรงถ้ามี
+                // โหมดค้นหาจากสถานที่: ใช้ระยะเส้นทางจริงตามรัศมีที่เลือก
+                if (_isSearchByPlace &&
+                    _searchLat != null &&
+                    _searchLng != null) {
+                  return FutureBuilder<List<int?>>(
+                    future: _fetchRouteDistancesFromOrigin(
+                        _searchLat!, _searchLng!, items),
+                    builder: (context, snapRoute) {
+                      List<Map<String, dynamic>> listToRender =
+                          List<Map<String, dynamic>>.from(items);
+                      final routeMeters = snapRoute.data;
+                      final useRoute = routeMeters != null &&
+                          routeMeters.any((e) => e != null);
+
+                      if (routeMeters != null) {
+                        for (int i = 0;
+                            i < listToRender.length && i < routeMeters.length;
+                            i++) {
+                          listToRender[i]['routeMeters'] = routeMeters[i];
+                        }
+                      }
+
+                      if (!useRoute) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      // กรองภายในรัศมีที่เลือก (ค่าเริ่มต้น 1 กม.)
+                      final int limitMeters = (_radiusMeters ?? 1000).toInt();
+                      listToRender = listToRender
+                          .where((e) =>
+                              (e['routeMeters'] as int?) != null &&
+                              (e['routeMeters'] as int) <= limitMeters)
+                          .toList();
+
+                      listToRender.sort((a, b) {
+                        final ra = (a['routeMeters'] as int?) ?? 1 << 30;
+                        final rb = (b['routeMeters'] as int?) ?? 1 << 30;
+                        return ra.compareTo(rb);
+                      });
+
+                      final listWidget =
+                          _buildParkingList(listToRender, preferRoute: true);
+                      final canLoadMore = snapshot.data!.docs.length >= _limit;
+                      return Column(children: [
+                        listWidget,
+                        const SizedBox(height: 8),
+                        if (canLoadMore)
+                          TextButton(
+                            onPressed: () => setState(() => _limit += 20),
+                            child: const Text('โหลดเพิ่ม'),
+                          ),
+                      ]);
+                    },
+                  );
+                }
+
+                // กรณีอื่น ๆ (เช่น ไม่มีตำแหน่งและไม่ได้ค้นหาจากสถานที่): เรียงตามเส้นตรงเป็น fallback
                 items.sort((a, b) {
                   final da = (a['distance'] as double?) ?? double.infinity;
                   final db = (b['distance'] as double?) ?? double.infinity;
@@ -316,16 +382,22 @@ class _MyHomeState extends State<MyHome> {
               },
             ),
             const SizedBox(height: 10),
-            if (!_isSearchByPlace)
-              ElevatedButton(
-                onPressed: _isGettingLocation ? null : _openRadiusPicker,
-                child: _isGettingLocation
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('เลือกระยะทาง'),
-              ),
+            ElevatedButton(
+              onPressed: () async {
+                if (_isSearchByPlace) {
+                  await _openRadiusPickerForPlace();
+                } else {
+                  if (_isGettingLocation) return;
+                  await _openRadiusPicker();
+                }
+              },
+              child: _isGettingLocation && !_isSearchByPlace
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('เลือกระยะทาง'),
+            ),
             const SizedBox(height: 20),
           ],
         ),
@@ -470,6 +542,82 @@ class _MyHomeState extends State<MyHome> {
     );
   }
 
+  Future<void> _openRadiusPickerForPlace() async {
+    if (!mounted) return;
+    double tempRadiusMeters = _radiusMeters ?? 1000; // default 1 กม.
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) {
+            return AlertDialog(
+              title: const Text('เลือกระยะรัศมีการค้นหา'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_searchLat != null && _searchLng != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.place, size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'สถานที่ค้นหา: ${_searchPlaceLabel ?? ''}\n(${_searchLat!.toStringAsFixed(4)}, ${_searchLng!.toStringAsFixed(4)})',
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  Slider(
+                    min: 1000, // 1 กม.
+                    max: 10000, // 10 กม.
+                    divisions: 90,
+                    value: tempRadiusMeters.clamp(1000, 10000),
+                    label: tempRadiusMeters >= 1000
+                        ? '${(tempRadiusMeters / 1000).toStringAsFixed(1)} กม.'
+                        : '${tempRadiusMeters.toStringAsFixed(0)} ม.',
+                    onChanged: (v) {
+                      setStateDialog(() {
+                        tempRadiusMeters = v;
+                      });
+                    },
+                  ),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Text(
+                      tempRadiusMeters >= 1000
+                          ? '≈ ${(tempRadiusMeters / 1000).toStringAsFixed(1)} กิโลเมตร'
+                          : '≈ ${tempRadiusMeters.toStringAsFixed(0)} เมตร',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('ยกเลิก'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _radiusMeters = tempRadiusMeters;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('ยืนยัน'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   String _formatDistance(double d) {
     if (d >= 1000) {
       return '${(d / 1000).toStringAsFixed(1)} กม.';
@@ -490,8 +638,6 @@ class _MyHomeState extends State<MyHome> {
         final double? straight = entry['distance'] as double?;
         final int? routeMeters = entry['routeMeters'] as int?;
         final bool showRoute = preferRoute && routeMeters != null;
-        final numAvg = (data['rating_avg'] as num?)?.toDouble() ?? 0.0;
-        final int numCount = (data['rating_count'] as num?)?.toInt() ?? 0;
         final thumb =
             (data['image_thumb_url'] ?? data['image_url'] ?? '').toString();
         return ListTile(
@@ -510,48 +656,129 @@ class _MyHomeState extends State<MyHome> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'ที่จอดรถยนต์: ${data['car_count'] ?? 0} คัน\nที่จอดมอเตอร์ไซค์: ${data['bike_count'] ?? 0} คัน',
-              ),
+              Builder(builder: (_) {
+                final t = (data['type'] ?? '').toString();
+                final List<String> lines = [];
+                if (t.contains('รถยนต์')) {
+                  lines.add('ที่จอดรถยนต์: ${data['car_count'] ?? 0} คัน');
+                }
+                if (t.contains('มอเตอร์ไซค์')) {
+                  lines
+                      .add('ที่จอดมอเตอร์ไซค์: ${data['bike_count'] ?? 0} คัน');
+                }
+                return Text(lines.join('\n'));
+              }),
               if (showRoute)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                      'ระยะทางโดยประมาณ: ${_formatDistance(routeMeters.toDouble())}'),
+                    'ระยะทางโดยประมาณ: ${_formatDistance(routeMeters.toDouble())}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                 )
               else if (straight != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text('ระยะทางโดยประมาณ: ${_formatDistance(straight)}'),
+                  child: Text(
+                    'ระยะทางโดยประมาณ: ${_formatDistance(straight)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
                 ),
               const SizedBox(height: 4),
-              if (numCount == 0)
-                const Text('ยังไม่มีการให้คะแนน')
-              else ...[
-                Row(
-                  children: [
-                    ...List.generate(
-                      5,
-                      (i) => Icon(
-                        i < numAvg.round().clamp(0, 5)
-                            ? Icons.star
-                            : Icons.star_border,
-                        color: Colors.amber,
-                        size: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text('${numAvg.toStringAsFixed(1)} ($numCount)'),
-                  ],
-                ),
-              ],
+              // แสดงคะแนนรีวิวใต้ระยะทาง: ใช้ค่า aggregate ถ้ามี
+              // ถ้าไม่มี aggregate ให้ fallback ไปคำนวณจาก subcollection reviews แบบสด
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('parking_slots')
+                    .doc(doc.id)
+                    .snapshots(),
+                builder: (context, snap) {
+                  if (!snap.hasData) return const SizedBox.shrink();
+                  final v = snap.data!.data() as Map<String, dynamic>?;
+                  final double aggAvg =
+                      (v?['rating_avg'] as num?)?.toDouble() ?? 0.0;
+                  final int aggCount =
+                      (v?['rating_count'] as num?)?.toInt() ?? 0;
+
+                  if (aggCount > 0) {
+                    return Row(
+                      children: [
+                        ...List.generate(
+                          5,
+                          (i) => Icon(
+                            i < aggAvg.round().clamp(0, 5)
+                                ? Icons.star
+                                : Icons.star_border,
+                            color: Colors.amber,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('${aggAvg.toStringAsFixed(1)} ($aggCount)'),
+                      ],
+                    );
+                  }
+
+                  // Fallback: อ่านรีวิวรายการนี้โดยตรงเพื่อคำนวณเฉลี่ยแบบเรียลไทม์
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('parking_slots')
+                        .doc(doc.id)
+                        .collection('reviews')
+                        .snapshots(),
+                    builder: (context, rs) {
+                      if (!rs.hasData) return const SizedBox.shrink();
+                      final docs = rs.data!.docs;
+                      if (docs.isEmpty) return const SizedBox.shrink();
+                      double sum = 0;
+                      for (final d in docs) {
+                        final r = d['rating'];
+                        if (r is num) sum += r.toDouble();
+                      }
+                      final avg = sum / docs.length;
+                      return Row(
+                        children: [
+                          ...List.generate(
+                            5,
+                            (i) => Icon(
+                              i < avg.round().clamp(0, 5)
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              color: Colors.amber,
+                              size: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('${avg.toStringAsFixed(1)} (${docs.length})'),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
             ],
           ),
-          trailing: ElevatedButton(
-            onPressed: () {
-              _showBookingDialog(data, doc.id);
-            },
-            child: const Text('จองที่จอดรถ'),
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 0),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () {
+                _showBookingDialog(data, doc.id);
+              },
+              child: const Text(
+                'จองที่จอดรถ',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
           ),
           onTap: () {
             Navigator.push(
@@ -620,6 +847,49 @@ class _MyHomeState extends State<MyHome> {
             'lat': _currentPosition!.latitude,
             'lng': _currentPosition!.longitude
           },
+          'destinations': batch,
+          'mode': 'driving',
+        });
+        final List distances = (resp.data['distances'] as List?) ?? [];
+        for (int j = 0; j < distances.length && j < idxs.length; j++) {
+          final d = distances[j];
+          if (d is Map && d['meters'] != null) {
+            results[idxs[j]] = (d['meters'] as num).toInt();
+          }
+        }
+      }
+      return results;
+    } catch (_) {
+      return List<int?>.filled(items.length, null);
+    }
+  }
+
+  Future<List<int?>> _fetchRouteDistancesFromOrigin(double originLat,
+      double originLng, List<Map<String, dynamic>> items) async {
+    try {
+      final List<Map<String, double>> dests = [];
+      final List<int> mapIndex = [];
+      for (int i = 0; i < items.length; i++) {
+        final data = items[i]['data'] as Map<String, dynamic>;
+        final GeoPoint? gp = data['location'] as GeoPoint?;
+        if (gp != null) {
+          dests.add({'lat': gp.latitude, 'lng': gp.longitude});
+          mapIndex.add(i);
+        }
+      }
+      if (dests.isEmpty) return List<int?>.filled(items.length, null);
+
+      final results = List<int?>.filled(items.length, null);
+      final callable = FirebaseFunctions.instance.httpsCallable('routeMatrix');
+
+      const int chunk = 25;
+      for (int i = 0; i < dests.length; i += chunk) {
+        final batch = dests.sublist(
+            i, i + chunk > dests.length ? dests.length : i + chunk);
+        final idxs = mapIndex.sublist(
+            i, i + chunk > dests.length ? dests.length : i + chunk);
+        final resp = await callable.call({
+          'origin': {'lat': originLat, 'lng': originLng},
           'destinations': batch,
           'mode': 'driving',
         });
@@ -875,12 +1145,51 @@ class _MyHomeState extends State<MyHome> {
                       ),
                       TextButton.icon(
                         onPressed: () async {
-                          final now = DateTime.now();
+                          DateTime now = DateTime.now();
+                          // Parse service_date range: "dd/MM/yyyy - dd/MM/yyyy"
+                          DateTime? rangeStart;
+                          DateTime? rangeEnd;
+                          try {
+                            final raw =
+                                (slotData['service_date'] ?? '').toString();
+                            if (raw.contains('-')) {
+                              final parts = raw.split('-');
+                              DateTime? parseDate(String s) {
+                                final t = s.trim();
+                                final seg = t.split('/');
+                                if (seg.length != 3) return null;
+                                final d = int.tryParse(seg[0]);
+                                final m = int.tryParse(seg[1]);
+                                final y = int.tryParse(seg[2]);
+                                if (d == null || m == null || y == null)
+                                  return null;
+                                return DateTime(y, m, d);
+                              }
+
+                              rangeStart = parseDate(parts[0]);
+                              rangeEnd = parseDate(parts[1]);
+                              if (rangeStart != null && rangeEnd != null) {
+                                // Normalize to today-or-start for initial date
+                                final today =
+                                    DateTime(now.year, now.month, now.day);
+                                if (today.isBefore(rangeStart)) {
+                                  now = rangeStart;
+                                } else if (today.isAfter(rangeEnd)) {
+                                  now = rangeEnd;
+                                } else {
+                                  now = today;
+                                }
+                              }
+                            }
+                          } catch (_) {}
+
                           final picked = await showDatePicker(
                             context: context,
                             initialDate: now,
-                            firstDate: DateTime(now.year, now.month, now.day),
-                            lastDate: now.add(const Duration(days: 365)),
+                            firstDate: (rangeStart ??
+                                DateTime(now.year, now.month, now.day)),
+                            lastDate: (rangeEnd ??
+                                now.add(const Duration(days: 365))),
                           );
                           if (picked != null) {
                             setD(() => bookingDate = picked);

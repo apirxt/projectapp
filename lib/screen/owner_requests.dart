@@ -204,22 +204,23 @@ class _OwnerRequestsScreenState extends State<OwnerRequestsScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (imageUrl != null && imageUrl.isNotEmpty)
-                          TextButton(
-                            onPressed: () => _viewSlip(imageUrl),
-                            child: const Text('ดูสลิป'),
-                          ),
                         if (status == 'pending') ...[
+                          ElevatedButton(
+                            onPressed: () => _decide(b['id'] as String, true),
+                            child: const Text('อนุมัติ'),
+                          ),
+                          const SizedBox(width: 6),
                           TextButton(
                             onPressed: () => _decide(b['id'] as String, false),
                             child: const Text('ปฏิเสธ'),
                           ),
                           const SizedBox(width: 6),
-                          ElevatedButton(
-                            onPressed: () => _decide(b['id'] as String, true),
-                            child: const Text('อนุมัติ'),
-                          ),
                         ],
+                        if (imageUrl != null && imageUrl.isNotEmpty)
+                          TextButton(
+                            onPressed: () => _viewSlip(imageUrl),
+                            child: const Text('ดูสลิป'),
+                          ),
                       ],
                     ),
                   ),

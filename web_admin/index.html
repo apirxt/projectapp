@@ -32,6 +32,7 @@
         <div id="tabSwitcher" class="tabs hidden">
           <button id="tabUsers" class="tab active">จัดการผู้ใช้</button>
           <button id="tabRequests" class="tab">คำขอปล่อยเช่าที่จอด</button>
+          <button id="tabExtRequests" class="tab">คำขอต่ออายุสิทธิ์</button>
         </div>
       </div>
     </div>
@@ -44,7 +45,6 @@
           <button id="btnRefresh" class="btn">รีเฟรช</button>
           <button id="btnPrev" class="btn">ก่อนหน้า</button>
           <button id="btnNext" class="btn">ถัดไป</button>
-          <button id="btnBackfillRatings" class="btn">คำนวณคะแนนทั้งหมด</button>
           <button id="btnCleanupBookings" class="btn">ลบการจองที่ไม่ถูกต้อง</button>
         </div>
       </div>
@@ -95,6 +95,33 @@
       </table>
       </div>
     </div>
+  
+    <!-- ส่วนคำขอต่ออายุสิทธิ์ -->
+    <div id="extRequests" class="card hidden">
+        <div class="row row-between">
+          <strong>คำขอต่ออายุสิทธิ์</strong>
+          <div class="row">
+            <button id="btnExtRefresh" class="btn">รีเฟรช</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>อีเมล</th>
+              <th>ชื่อ</th>
+              <th>ชื่อ-นามสกุล</th>
+              <th>เบอร์โทร</th>
+              <th>สลิป</th>
+              <th>UID</th>
+              <th>วันที่ขอ</th>
+              <th>จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="extRequestsTbody"></tbody>
+        </table>
+        </div>
+      </div>
 
     <!-- Modal แสดงรูปใหญ่ -->
     <div id="imgModal" class="modal hidden">

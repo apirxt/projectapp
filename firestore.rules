@@ -96,6 +96,28 @@ service cloud.firestore {
       // การเขียนปรับสถานะทำโดย Cloud Functions (Admin SDK) จึงไม่ต้องเปิดสิทธิ์เขียนจาก client
     }
 
+    // คำขอลงทะเบียนสิทธิ์ปล่อยเช่าที่จอด
+    match /host_rights_requests/{reqId} {
+      // ผู้ใช้เห็นได้เฉพาะคำขอของตนเอง (แอดมินเห็นได้ด้วยกฎรวม isAdmin ด้านบน)
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // ผู้ใช้สร้างคำขอของตนเองเท่านั้น และจำกัดฟิลด์ที่อนุญาต
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId','name','phone','imageUrl','createdAt']);
+
+      // ไม่อนุญาต update/delete จาก client ฝั่งผู้ใช้ (ปล่อยให้แอดมิน/ฟังก์ชันจัดการ)
+    }
+
+    // คำขอต่ออายุสิทธิ์ปล่อยเช่า
+    match /host_extension_requests/{reqId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid','email','displayName','fullName','phone','slipUrl','createdAt']);
+      // ไม่อนุญาต update/delete จาก client
+    }
+
     // การจองของผู้ใช้แต่ละคน
     match /user_bookings/{bookingId} {
       // อ่านได้เฉพาะเจ้าของเอกสาร (หรือแอดมินด้วยกฎรวมด้านบน)
@@ -109,8 +131,12 @@ service cloud.firestore {
           'userId','ownerId','slotId','slotName','vehicleType','name','phone','imageUrl','bookingDate','status','createdAt'
         ]);
 
-      // อัปเดต/ลบ: ยังไม่เปิดให้ผู้ใช้ทำเอง (กันการแก้ค่าที่ละเอียดอ่อน)
-      // หากต้องการให้ยกเลิกการจองเองได้ ค่อยเพิ่มกฎเฉพาะภายหลัง
+      // อนุญาตให้ผู้ใช้ยกเลิกการจองของตนเองได้ เฉพาะสถานะรอตรวจสอบเท่านั้น
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && (resource.data.status == 'pending');
+
+      // ยังไม่อนุญาตให้ผู้ใช้แก้ไขข้อมูลการจองโดยตรง
     }
   }
 }

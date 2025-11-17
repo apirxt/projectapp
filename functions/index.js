@@ -445,6 +445,181 @@ exports.submitHostRegistration = onCall(async (request) => {
   return { status: 'requested' };
 });
 
+// ผู้ใช้ส่งคำขอต่ออายุสิทธิ์ (แนบสลิปเหมือนลงทะเบียนครั้งแรก)
+// data: { fullName: string, phone: string, slipUrl: string }
+exports.submitHostExtension = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบก่อน');
+  const uid = request.auth.uid;
+  const data = request.data || {};
+  const fullName = String(data.fullName || '').trim();
+  const phone = String(data.phone || '').trim();
+  const slipUrl = String(data.slipUrl || '').trim();
+  if (!fullName || !phone || !slipUrl) {
+    throw new HttpsError('invalid-argument', 'ต้องระบุชื่อ-นามสกุล เบอร์โทร และรูปสลิป');
+  }
+
+  const db = admin.firestore();
+  const FieldValue = admin.firestore.FieldValue;
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  const udata = userSnap.exists ? (userSnap.data() || {}) : {};
+  // อนุญาตเฉพาะผู้ที่เคยลงทะเบียนแบบ manual เท่านั้น (ไม่ใช่เปิดสิทธิ์ตรงโดยแอดมิน)
+  const provider = udata?.registration?.provider || null;
+  if (provider !== 'manual') {
+    throw new HttpsError('failed-precondition', 'บัญชีนี้ไม่ได้ลงทะเบียนผ่านระบบสลิป');
+  }
+
+  // สร้างคำขอในคอลเลกชัน host_extension_requests
+  await db.collection('host_extension_requests').add({
+    uid,
+    email: udata.email || request.auth.token?.email || null,
+    displayName: udata.displayName || request.auth.token?.name || null,
+    fullName,
+    phone,
+    slipUrl,
+    status: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { ok: true };
+});
+
+// แอดมิน: ดึงรายการคำขอต่ออายุ
+// data: { limit?: number }
+exports.listExtensionRequests = onCall(async (request) => {
+  assertAdmin(request);
+  const db = admin.firestore();
+  const limit = Math.min(Number(request.data?.limit || 100), 300);
+  const qs = await db.collection('host_extension_requests').orderBy('createdAt', 'desc').limit(limit).get();
+  const items = [];
+  for (const d of qs.docs) {
+    const v = d.data() || {};
+    const status = v.status || 'pending';
+    if (status !== 'pending') continue; // แสดงเฉพาะที่ยังรอดำเนินการ
+    items.push({
+      id: d.id,
+      uid: v.uid || null,
+      email: v.email || null,
+      displayName: v.displayName || null,
+      fullName: v.fullName || null,
+      phone: v.phone || null,
+      slipUrl: v.slipUrl || null,
+      status,
+      createdAt: v.createdAt && typeof v.createdAt.toMillis === 'function' ? v.createdAt.toMillis() : null,
+    });
+  }
+  return { requests: items };
+});
+
+// แอดมิน: อนุมัติ/ปฏิเสธคำขอต่ออายุ
+// data: { reqId: string, approve: boolean, minutes?: number }
+exports.decideExtensionRequest = onCall(async (request) => {
+  assertAdmin(request);
+  const { reqId, approve } = request.data || {};
+  const minutes = Number(request.data?.minutes || 10);
+  if (!reqId || typeof approve !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'ต้องระบุ reqId และ approve');
+  }
+  const db = admin.firestore();
+  const FieldValue = admin.firestore.FieldValue;
+  const reqRef = db.collection('host_extension_requests').doc(String(reqId));
+  const reqSnap = await reqRef.get();
+  if (!reqSnap.exists) throw new HttpsError('not-found', 'ไม่พบคำขอ');
+  const r = reqSnap.data() || {};
+  const uid = r.uid;
+  if (!uid) throw new HttpsError('invalid-argument', 'คำขอไม่มี uid');
+
+  if (!approve) {
+    await reqRef.set({ decidedAt: FieldValue.serverTimestamp(), status: 'rejected', decidedBy: { uid: request.auth.uid, email: request.auth.token?.email || null } }, { merge: true });
+    return { ok: true, status: 'rejected' };
+  }
+
+  const userRef = db.collection('users').doc(String(uid));
+  const userSnap = await userRef.get();
+  const v = userSnap.exists ? (userSnap.data() || {}) : {};
+  const now = Date.now();
+  let base = now;
+  const curUntil = v.hostActiveUntil?.toDate?.()?.getTime?.() || null;
+  if (typeof curUntil === 'number' && curUntil > now) base = curUntil;
+  const newUntil = new Date(base + minutes * 60 * 1000);
+
+  // ยืนยัน claim
+  try {
+    const user = await admin.auth().getUser(uid);
+    const claims = user.customClaims || {};
+    claims.canHostParking = true;
+    await admin.auth().setCustomUserClaims(uid, claims);
+  } catch (_) {}
+
+  await userRef.set({ hostStatus: 'active', hostActiveUntil: admin.firestore.Timestamp.fromDate(newUntil) }, { merge: true });
+  await reqRef.set({ decidedAt: FieldValue.serverTimestamp(), status: 'approved', decidedBy: { uid: request.auth.uid, email: request.auth.token?.email || null } }, { merge: true });
+  return { ok: true, status: 'approved', hostActiveUntil: newUntil.getTime() };
+});
+// แอดมิน: ย้ายคำขอรุ่นเก่าใน host_rights_requests ไปเก็บใน users/{uid}
+// data: { deleteAfter?: boolean, limit?: number }
+exports.backfillLegacyHostRequests = onCall(async (request) => {
+  assertAdmin(request);
+  const db = admin.firestore();
+  const FieldValue = admin.firestore.FieldValue;
+
+  const del = Boolean(request.data?.deleteAfter || false);
+  const lim = Math.min(Number(request.data?.limit || 500), 2000);
+
+  const snap = await db.collection('host_rights_requests').limit(lim).get();
+  let migrated = 0;
+  for (const d of snap.docs) {
+    try {
+      const v = d.data() || {};
+      const uid = v.userId || null;
+      if (!uid) continue;
+      const fullName = v.name || v.fullName || null;
+      const phone = v.phone || null;
+      const slipUrl = v.imageUrl || v.slipUrl || null;
+      const createdAt = v.createdAt || null;
+
+      // ดึงอีเมล/ชื่อผู้ใช้จาก Auth เพื่อเก็บในเอกสาร users
+      let email = null, displayName = null;
+      try {
+        const u = await admin.auth().getUser(uid);
+        email = u.email || null;
+        displayName = u.displayName || null;
+      } catch (_) {}
+
+      const ref = db.collection('users').doc(String(uid));
+      const cur = await ref.get();
+      const curData = cur.exists ? (cur.data() || {}) : {};
+      const curStatus = curData.hostStatus || 'none';
+
+      // ไม่ override สถานะที่สูงกว่า (approved/active/rejected)
+      if (['approved', 'active'].includes(String(curStatus))) {
+        if (del) await d.ref.delete().catch(()=>{});
+        continue;
+      }
+
+      await ref.set({
+        uid,
+        email: email ?? curData.email ?? null,
+        displayName: displayName ?? curData.displayName ?? null,
+        hostStatus: 'requested',
+        requestedAt: createdAt || FieldValue.serverTimestamp(),
+        registration: {
+          ...(curData.registration || {}),
+          fullName: fullName ?? curData.registration?.fullName ?? null,
+          phone: phone ?? curData.registration?.phone ?? null,
+          slipUrl: slipUrl ?? curData.registration?.slipUrl ?? null,
+          provider: curData.registration?.provider || 'legacy',
+          createdAt: curData.registration?.createdAt || FieldValue.serverTimestamp(),
+        },
+      }, { merge: true });
+
+      if (del) await d.ref.delete().catch(()=>{});
+      migrated++;
+    } catch (e) {
+      // ข้ามอันที่ผิดพลาดเพื่อให้กระบวนการหลักเดินต่อ
+    }
+  }
+  return { migrated, scanned: snap.size, deleted: del ? migrated : 0 };
+});
+
 // ฝั่งแอดมิน: ต่ออายุสิทธิ์ Host โดยบวกต่อจากเวลาที่เหลืออยู่ (ถ้ามี)
 // data: { uid: string, minutes?: number }
 exports.extendHostPermission = onCall(async (request) => {
@@ -484,6 +659,46 @@ exports.extendHostPermission = onCall(async (request) => {
   );
   await logAdminAction("extendHostPermission", request, { targetUid: uid, minutes });
   return { uid, hostActiveUntil: newUntil.getTime() };
+});
+
+// ผู้ใช้ต่ออายุสิทธิ์ปล่อยเช่าด้วยตัวเอง (สำหรับผู้ที่มีสิทธิ์อยู่แล้ว)
+// data: { minutes?: number }
+exports.selfExtendHostPermission = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'ต้องเข้าสู่ระบบก่อน');
+  const uid = request.auth.uid;
+  const minutes = Number(request.data?.minutes || 10);
+  const db = admin.firestore();
+  const ref = db.collection('users').doc(uid);
+
+  // ตรวจว่ามีสิทธิ์หรืออยู่ในสถานะที่อนุญาตให้ต่ออายุได้
+  const snap = await ref.get();
+  const v = snap.exists ? (snap.data() || {}) : {};
+  const status = String(v.hostStatus || 'none');
+  if (!['approved', 'active'].includes(status)) {
+    throw new HttpsError('failed-precondition', 'ยังไม่มีสิทธิ์ปล่อยเช่า');
+  }
+
+  // ต่ออายุจากเวลาที่เหลือ ถ้ายังไม่หมดอายุ
+  const now = Date.now();
+  let base = now;
+  const curUntil = v.hostActiveUntil?.toDate?.()?.getTime?.() || null;
+  if (typeof curUntil === 'number' && curUntil > now) base = curUntil;
+
+  const newUntil = new Date(base + minutes * 60 * 1000);
+
+  // ยืนยัน claim
+  try {
+    const user = await admin.auth().getUser(uid);
+    const claims = user.customClaims || {};
+    claims.canHostParking = true;
+    await admin.auth().setCustomUserClaims(uid, claims);
+  } catch (_) {}
+
+  await ref.set({
+    hostStatus: 'active',
+    hostActiveUntil: admin.firestore.Timestamp.fromDate(newUntil),
+  }, { merge: true });
+  return { hostActiveUntil: newUntil.getTime() };
 });
 
 // เจ้าของ: ดึงรายการจองของตนเอง (กล่องขาเข้า)

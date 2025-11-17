@@ -32,6 +32,19 @@ service firebase.storage {
       );
     }
 
+    // เวอร์ชันที่แยกโฟลเดอร์ตาม uid เพื่อความเข้ากันได้กับคลไคลเอนต์บางเวอร์ชัน
+    match /parking_images/{userId}/{filePath=**} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        ownerUidFromRequest() == request.auth.uid || userId == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+    }
+
     // รูปที่แนบมากับการจอง
     // รองรับทั้งแบบกำหนดโฟลเดอร์ตาม uid และตรวจ ownerUid ใน metadata
     match /booking_images/{userId}/{filePath=**} {
@@ -67,6 +80,35 @@ service firebase.storage {
     match /registration_slips/{userId}/{filePath=**} {
       allow read: if isSignedIn();
       // ผู้ใช้สามารถอัปโหลดเฉพาะในโฟลเดอร์ของตนเอง หรือแนบ ownerUid ให้ตรง
+      allow create: if isSignedIn() && (
+        userId == request.auth.uid || ownerUidFromRequest() == request.auth.uid
+      );
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+    }
+
+    // โฟลเดอร์ host_rights สำหรับสลิปลงทะเบียน (ใช้ในแอปมือถือ)
+    match /host_rights/{userId}/{filePath=**} {
+      // อ่านได้เมื่อผู้ใช้ล็อกอิน
+      allow read: if isSignedIn();
+      // อัปโหลดได้เฉพาะในโฟลเดอร์ของตัวเอง หรือแนบ metadata.ownerUid ให้ตรงกับผู้ใช้
+      allow create: if isSignedIn() && (
+        userId == request.auth.uid || ownerUidFromRequest() == request.auth.uid
+      );
+      // เจ้าของเท่านั้นที่แก้ไข/ลบได้ (รองรับไฟล์เก่าที่ไม่มี metadata)
+      allow update, delete: if isSignedIn() && (
+        ownerUidFromResource() == request.auth.uid ||
+        ownerUidFromRequest() == request.auth.uid ||
+        userId == request.auth.uid
+      );
+    }
+
+    // โฟลเดอร์สลิปต่ออายุสิทธิ์
+    match /host_extensions/{userId}/{filePath=**} {
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && (
         userId == request.auth.uid || ownerUidFromRequest() == request.auth.uid
       );
