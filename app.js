@@ -224,7 +224,6 @@ $("btnRefresh").addEventListener("click", async () => {
   await loadUsers();
 });
 
-// ปุ่มคำนวณคะแนนรีวิวทั้งหมด ถูกยกเลิกการใช้งาน (คำนวณอัตโนมัติในแอปแล้ว)
 
 // ปุ่มลบการจองที่ไม่ถูกต้อง (slot ถูกลบไปแล้ว)
 $("btnCleanupBookings").addEventListener("click", async () => {
@@ -321,7 +320,6 @@ $("btnExtRefresh").addEventListener("click", async () => {
   await loadExtRequests();
 });
 
-// ปุ่มย้ายคำขอเก่า ถูกยกเลิกการใช้งาน
 
 //ส่วนปุ่มเข้าสู่ระบบ
 btnSignIn.addEventListener("click", async () => {
