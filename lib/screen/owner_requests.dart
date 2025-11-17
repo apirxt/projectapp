@@ -131,10 +131,19 @@ class _OwnerRequestsScreenState extends State<OwnerRequestsScreen> {
                 ),
                 const SizedBox(width: 8),
                 ChoiceChip(
-                  label: const Text('ทั้งหมด'),
-                  selected: _status == 'all',
+                  label: const Text('อนุมัติแล้ว'),
+                  selected: _status == 'approved',
                   onSelected: (v) {
-                    setState(() => _status = 'all');
+                    setState(() => _status = 'approved');
+                    _load(reset: true);
+                  },
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('ปฏิเสธแล้ว'),
+                  selected: _status == 'rejected',
+                  onSelected: (v) {
+                    setState(() => _status = 'rejected');
                     _load(reset: true);
                   },
                 ),
@@ -159,6 +168,20 @@ class _OwnerRequestsScreenState extends State<OwnerRequestsScreen> {
                 final String renter = (b['name'] ?? '-') as String;
                 final String phone = (b['phone'] ?? '-') as String;
                 final String status = (b['status'] ?? 'pending') as String;
+                String statusTh(String s) {
+                  switch (s.toLowerCase()) {
+                    case 'pending':
+                      return 'รอตรวจสอบ';
+                    case 'approved':
+                    case 'confirmed':
+                      return 'อนุมัติ';
+                    case 'rejected':
+                      return 'ปฎิเสธ';
+                    default:
+                      return '-';
+                  }
+                }
+
                 final String vehicleType = (b['vehicleType'] ?? '-') as String;
                 final String vehicleLabel = vehicleType == 'car'
                     ? 'รถยนต์'
@@ -177,7 +200,7 @@ class _OwnerRequestsScreenState extends State<OwnerRequestsScreen> {
                     leading: const Icon(Icons.receipt_long),
                     title: Text(slotName),
                     subtitle: Text(
-                        'ผู้จอง: $renter  โทร: $phone\nประเภทรถ: $vehicleLabel\nวันที่: ${day != null ? '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year}' : '-'}\nสถานะ: $status'),
+                        'ผู้จอง: $renter  โทร: $phone\nประเภทรถ: $vehicleLabel\nวันที่: ${day != null ? '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}/${day.year}' : '-'}\nสถานะ: ${statusTh(status)}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

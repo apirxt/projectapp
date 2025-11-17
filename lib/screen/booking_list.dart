@@ -20,6 +20,34 @@ class BookingListScreen extends StatelessWidget {
     return '${two(d.day)}/${two(d.month)}/${d.year}';
   }
 
+  String _statusTh(String? s) {
+    switch ((s ?? '').toLowerCase()) {
+      case 'pending':
+        return 'รอตรวจสอบ';
+      case 'approved':
+      case 'confirmed':
+        return 'อนุมัติ';
+      case 'rejected':
+        return 'ปฎิเสธ';
+      default:
+        return '-';
+    }
+  }
+
+  Color _statusColor(String? s) {
+    switch ((s ?? '').toLowerCase()) {
+      case 'pending':
+        return Colors.orange.shade300;
+      case 'approved':
+      case 'confirmed':
+        return Colors.green.shade400;
+      case 'rejected':
+        return Colors.red.shade300;
+      default:
+        return Colors.grey.shade500;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -72,7 +100,8 @@ class BookingListScreen extends StatelessWidget {
             itemCount: docs.length,
             separatorBuilder: (_, __) => const Divider(height: 0),
             itemBuilder: (context, i) {
-              final d = docs[i].data() as Map<String, dynamic>;
+              final doc = docs[i];
+              final d = doc.data() as Map<String, dynamic>;
               final slotName = (d['slotName'] ?? '-') as String;
               final name = (d['name'] ?? '-') as String;
               final phone = (d['phone'] ?? '-') as String;
@@ -103,21 +132,19 @@ class BookingListScreen extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: status == 'pending'
-                        ? Colors.orange.shade300
-                        : status == 'confirmed'
-                            ? Colors.green.shade400
-                            : Colors.grey.shade500,
+                    color: _statusColor(status),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(status,
-                      style:
-                          const TextStyle(color: Colors.black, fontSize: 12)),
+                  child: Text(
+                    _statusTh(status),
+                    style: const TextStyle(color: Colors.black, fontSize: 12),
+                  ),
                 ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => BookingDetailScreen(booking: d),
+                      builder: (_) =>
+                          BookingDetailScreen(booking: d, bookingId: doc.id),
                     ),
                   );
                 },

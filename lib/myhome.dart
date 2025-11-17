@@ -7,7 +7,6 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
 import 'screen/parking_detail.dart';
@@ -34,7 +33,7 @@ class _MyHomeState extends State<MyHome> {
   String? _searchPlaceLabel; // label แสดงชื่อสถานที่ที่ค้นหา
 
   // debounce สำหรับ geocoding
-  Duration _debounceDuration = const Duration(milliseconds: 500);
+  final Duration _debounceDuration = const Duration(milliseconds: 500);
   Timer? _searchDebounce;
 
   @override
@@ -167,7 +166,7 @@ class _MyHomeState extends State<MyHome> {
                     children: [
                       Chip(
                         avatar: const Icon(Icons.place, size: 18),
-                        label: Text('ค้นหาจาก: ' + (_searchPlaceLabel ?? '')),
+                        label: Text('ค้นหาจาก: ${_searchPlaceLabel ?? ''}'),
                       ),
                     ],
                   ),
@@ -713,14 +712,14 @@ class _MyHomeState extends State<MyHome> {
               // ignore: avoid_print
               print('UPLOAD ERROR code=${e.code} message=${e.message}');
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
                     SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: ${e.code}')));
               }
             } catch (e) {
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
                     SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')));
               }
             }
@@ -749,24 +748,24 @@ class _MyHomeState extends State<MyHome> {
                 'status': 'pending',
                 'createdAt': FieldValue.serverTimestamp(),
               });
-              if (mounted) {
+              if (ctx.mounted) {
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context)
+                ScaffoldMessenger.of(ctx)
                     .showSnackBar(const SnackBar(content: Text('จองสำเร็จ')));
               }
             } on FirebaseException catch (e) {
               // ignore: avoid_print
               print('BOOKING WRITE ERROR code=${e.code} message=${e.message}');
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
                   SnackBar(content: Text('การจองล้มเหลว: ${e.code}')),
                 );
               }
             } catch (e) {
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context)
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx)
                     .showSnackBar(SnackBar(content: Text('การจองล้มเหลว: $e')));
               }
             }
@@ -906,12 +905,12 @@ class _MyHomeState extends State<MyHome> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 if (bankName.isNotEmpty)
-                                  Text('ชื่อธนาคาร: $bankName'),
+                                  Text('ธนาคาร : $bankName'),
                                 if (accountName.isNotEmpty)
-                                  Text('ชื่อบัญชี: $accountName'),
+                                  Text('ชื่อบัญชี : $accountName'),
                                 if (bankAccount.isNotEmpty)
                                   Text(
-                                    'เลขบัญชี: $bankAccount',
+                                    'เลขบัญชี : $bankAccount',
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w600),
                                     overflow: TextOverflow.ellipsis,

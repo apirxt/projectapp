@@ -8,7 +8,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
-import 'package:firebase_core/firebase_core.dart';
 import 'screen/owner_requests.dart';
 
 class MyMember extends StatefulWidget {
@@ -91,7 +90,7 @@ class _MyMemberState extends State<MyMember> {
   // อ้างอิงรูปแบบ geohash base32 "0123456789bcdefghjkmnpqrstuvwxyz"
   String _encodeGeohash(double latitude, double longitude,
       {int precision = 9}) {
-    const String _base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+    const String base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
     double latMin = -90.0, latMax = 90.0;
     double lonMin = -180.0, lonMax = 180.0;
     bool isLon = true;
@@ -123,7 +122,7 @@ class _MyMemberState extends State<MyMember> {
       isLon = !isLon;
       bit++;
       if (bit == 5) {
-        hash.write(_base32[ch]);
+        hash.write(base32[ch]);
         bit = 0;
         ch = 0;
       }
@@ -204,7 +203,7 @@ class _MyMemberState extends State<MyMember> {
                       final DateTime? exp =
                           _hostActiveUntil?.toDate().toLocal();
                       final String expiryText = exp != null
-                          ? 'สิทธิ์หมดอายุ: ' + _fmtDate(exp)
+                          ? 'สิทธิ์หมดอายุ: ${_fmtDate(exp)}'
                           : 'สิทธิ์หมดอายุ: -';
 
                       return ListView.builder(
@@ -237,8 +236,7 @@ class _MyMemberState extends State<MyMember> {
                               ),
                             ),
                             subtitle: Text(
-                              'จำนวนรถยนต์: ${data['car_count'] ?? 0}\nจำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}' +
-                                  (isOwner ? '\n$expiryText' : ''),
+                              'จำนวนรถยนต์: ${data['car_count'] ?? 0}\nจำนวนมอเตอร์ไซค์: ${data['bike_count'] ?? 0}${isOwner ? '\n$expiryText' : ''}',
                               style: const TextStyle(
                                 fontSize: 16,
                                 color: Color.fromARGB(255, 175, 175, 175),
@@ -381,6 +379,12 @@ class _MyMemberState extends State<MyMember> {
     final List<String> localImagePathsInDialog =
         <String>[]; // เก็บ path ของรูปใน Storage เพื่อไว้ลบภายหลัง
 
+    // ตัวเลือกวันช่วงให้บริการ และเวลาเปิด-ปิด
+    TimeOfDay? openTime;
+    TimeOfDay? closeTime;
+    // ตัวเลือกธนาคาร (dropdown)
+    String? selectedBankName;
+
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setDialogState) {
         return AlertDialog(
@@ -458,16 +462,57 @@ class _MyMemberState extends State<MyMember> {
                   ),
                 ],
                 const Divider(height: 0),
+                // เลือกช่วงวันที่ให้บริการ
                 TextField(
                   controller: dateController,
+                  readOnly: true,
                   decoration: const InputDecoration(
-                      labelText: 'วันที่เปิดให้บริการ(เช่น 27/04/2025)'),
-                  keyboardType: TextInputType.datetime,
+                      labelText: 'ช่วงวันที่เปิดให้บริการ (เริ่ม - สิ้นสุด)'),
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(now.year, now.month, now.day),
+                      lastDate: now.add(const Duration(days: 365 * 3)),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        String two(int v) => v.toString().padLeft(2, '0');
+                        final s = picked.start;
+                        final e = picked.end;
+                        dateController.text =
+                            '${two(s.day)}/${two(s.month)}/${s.year} - ${two(e.day)}/${two(e.month)}/${e.year}';
+                      });
+                    }
+                  },
                 ),
+                // เลือกเวลาเปิด-ปิดที่ให้บริการจริง ๆ
                 TextField(
                   controller: timeController,
+                  readOnly: true,
                   decoration: const InputDecoration(
-                      labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
+                      labelText: 'เวลาเปิดให้บริการ (เช่น 08:00-20:00)'),
+                  onTap: () async {
+                    final ot = await showTimePicker(
+                      context: context,
+                      initialTime: openTime ?? TimeOfDay(hour: 8, minute: 0),
+                    );
+                    if (ot == null) return;
+                    if (!context.mounted) return;
+                    final ct = await showTimePicker(
+                      context: context,
+                      initialTime: closeTime ?? TimeOfDay(hour: 20, minute: 0),
+                    );
+                    if (ct == null) return;
+                    if (!context.mounted) return;
+                    setDialogState(() {
+                      openTime = ot;
+                      closeTime = ct;
+                      String two(int v) => v.toString().padLeft(2, '0');
+                      timeController.text =
+                          '${two(ot.hour)}:${two(ot.minute)}-${two(ct.hour)}:${two(ct.minute)}';
+                    });
+                  },
                 ),
                 const Divider(height: 16),
                 const Align(
@@ -475,8 +520,28 @@ class _MyMemberState extends State<MyMember> {
                   child: Text('ข้อมูลบัญชีรับเงิน',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
-                TextField(
-                  controller: bankNameController,
+                DropdownButtonFormField<String>(
+                  initialValue: selectedBankName ??
+                      (bankNameController.text.isNotEmpty
+                          ? bankNameController.text
+                          : null),
+                  items: [
+                    DropdownMenuItem(value: 'กสิกร', child: Text('กสิกร')),
+                    DropdownMenuItem(
+                        value: 'ไทยพาณิชย์', child: Text('ไทยพาณิชย์')),
+                    DropdownMenuItem(value: 'กรุงไทย', child: Text('กรุงไทย')),
+                    DropdownMenuItem(value: 'กรุงเทพ', child: Text('กรุงเทพ')),
+                    DropdownMenuItem(value: 'กรุงศรี', child: Text('กรุงศรี')),
+                    DropdownMenuItem(
+                        value: 'ทหารไทยธนชาต', child: Text('ทหารไทยธนชาต')),
+                    DropdownMenuItem(value: 'ออมสิน', child: Text('ออมสิน')),
+                  ],
+                  onChanged: (v) {
+                    setDialogState(() {
+                      selectedBankName = v;
+                      bankNameController.text = v ?? '';
+                    });
+                  },
                   decoration: const InputDecoration(labelText: 'ชื่อธนาคาร'),
                 ),
                 TextField(
@@ -758,6 +823,34 @@ class _MyMemberState extends State<MyMember> {
     final List<String> localImagePaths = List<String>.from(originalImagePaths);
     String? localNameError;
     bool busy = false;
+    // เวลาเปิด-ปิด และธนาคารสำหรับแก้ไข
+    TimeOfDay? editOpenTime;
+    TimeOfDay? editCloseTime;
+    String? editSelectedBank;
+
+    // พยายามแปลงค่าเวลาเดิมเป็น TimeOfDay
+    void initTimeFromText() {
+      final t = timeCtl.text.trim();
+      if (t.contains('-')) {
+        final parts = t.split('-');
+        TimeOfDay? parseTime(String s) {
+          final seg = s.split(':');
+          if (seg.length != 2) return null;
+          final h = int.tryParse(seg[0]);
+          final m = int.tryParse(seg[1]);
+          if (h == null || m == null) return null;
+          return TimeOfDay(hour: h, minute: m);
+        }
+
+        editOpenTime = parseTime(parts[0].trim());
+        editCloseTime = parseTime(parts[1].trim());
+      }
+      if ((bankNameCtl.text).isNotEmpty) {
+        editSelectedBank = bankNameCtl.text;
+      }
+    }
+
+    initTimeFromText();
 
     return StatefulBuilder(
       builder: (BuildContext context, StateSetter setDialogState) {
@@ -838,14 +931,55 @@ class _MyMemberState extends State<MyMember> {
                 const Divider(height: 0),
                 TextField(
                   controller: dateCtl,
+                  readOnly: true,
                   decoration: const InputDecoration(
-                      labelText: 'วันที่เปิดให้บริการ(เช่น 27/04/2025)'),
-                  keyboardType: TextInputType.datetime,
+                      labelText: 'ช่วงวันที่เปิดให้บริการ (เริ่ม - สิ้นสุด)'),
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(now.year, now.month, now.day),
+                      lastDate: now.add(const Duration(days: 365 * 3)),
+                    );
+                    if (picked != null) {
+                      String two(int v) => v.toString().padLeft(2, '0');
+                      final s = picked.start;
+                      final e = picked.end;
+                      setDialogState(() {
+                        dateCtl.text =
+                            '${two(s.day)}/${two(s.month)}/${s.year} - ${two(e.day)}/${two(e.month)}/${e.year}';
+                      });
+                    }
+                  },
                 ),
                 TextField(
                   controller: timeCtl,
+                  readOnly: true,
                   decoration: const InputDecoration(
-                      labelText: 'เวลาที่เปิดให้บริการ(เช่น 08:00-20:00)'),
+                      labelText: 'เวลาเปิดให้บริการ (เช่น 08:00-20:00)'),
+                  onTap: () async {
+                    final ot = await showTimePicker(
+                      context: context,
+                      initialTime:
+                          editOpenTime ?? const TimeOfDay(hour: 8, minute: 0),
+                    );
+                    if (ot == null) return;
+                    if (!context.mounted) return;
+                    final ct = await showTimePicker(
+                      context: context,
+                      initialTime:
+                          editCloseTime ?? const TimeOfDay(hour: 20, minute: 0),
+                    );
+                    if (ct == null) return;
+                    if (!context.mounted) return;
+                    setDialogState(() {
+                      editOpenTime = ot;
+                      editCloseTime = ct;
+                      String two(int v) => v.toString().padLeft(2, '0');
+                      timeCtl.text =
+                          '${two(ot.hour)}:${two(ot.minute)}-${two(ct.hour)}:${two(ct.minute)}';
+                    });
+                  },
                 ),
                 const Divider(height: 16),
                 const Align(
@@ -853,8 +987,26 @@ class _MyMemberState extends State<MyMember> {
                   child: Text('ข้อมูลบัญชีรับเงิน',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
-                TextField(
-                  controller: bankNameCtl,
+                DropdownButtonFormField<String>(
+                  initialValue: editSelectedBank ??
+                      (bankNameCtl.text.isNotEmpty ? bankNameCtl.text : null),
+                  items: [
+                    DropdownMenuItem(value: 'กสิกร', child: Text('กสิกร')),
+                    DropdownMenuItem(
+                        value: 'ไทยพาณิชย์', child: Text('ไทยพาณิชย์')),
+                    DropdownMenuItem(value: 'กรุงไทย', child: Text('กรุงไทย')),
+                    DropdownMenuItem(value: 'กรุงเทพ', child: Text('กรุงเทพ')),
+                    DropdownMenuItem(value: 'กรุงศรี', child: Text('กรุงศรี')),
+                    DropdownMenuItem(
+                        value: 'ทหารไทยธนชาต', child: Text('ทหารไทยธนชาต')),
+                    DropdownMenuItem(value: 'ออมสิน', child: Text('ออมสิน')),
+                  ],
+                  onChanged: (v) {
+                    setDialogState(() {
+                      editSelectedBank = v;
+                      bankNameCtl.text = v ?? '';
+                    });
+                  },
                   decoration: const InputDecoration(labelText: 'ชื่อธนาคาร'),
                 ),
                 TextField(

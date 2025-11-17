@@ -5,7 +5,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 class BookingDetailScreen extends StatelessWidget {
   final Map<String, dynamic> booking;
-  const BookingDetailScreen({super.key, required this.booking});
+  final String bookingId;
+  const BookingDetailScreen(
+      {super.key, required this.booking, required this.bookingId});
 
   String _fmtTs(Timestamp? ts) {
     if (ts == null) return '-';
@@ -19,6 +21,20 @@ class BookingDetailScreen extends StatelessWidget {
     final d = ts.toDate().toLocal();
     String two(int v) => v.toString().padLeft(2, '0');
     return '${two(d.day)}/${two(d.month)}/${d.year}';
+  }
+
+  String _statusTh(String? s) {
+    switch ((s ?? '').toLowerCase()) {
+      case 'pending':
+        return 'รอตรวจสอบ';
+      case 'approved':
+      case 'confirmed':
+        return 'อนุมัติ';
+      case 'rejected':
+        return 'ปฎิเสธ';
+      default:
+        return '-';
+    }
   }
 
   @override
@@ -145,7 +161,7 @@ class BookingDetailScreen extends StatelessWidget {
                 if (booking['bookingDate'] != null)
                   Text(
                       'วันที่จอง: ${_fmtDateOnly(booking['bookingDate'] as Timestamp?)}'),
-                Text('สถานะ: ${booking['status'] ?? 'pending'}'),
+                Text('สถานะ: ${_statusTh(booking['status'] as String?)}'),
                 Text(
                     'สร้างเมื่อ: ${_fmtTs(booking['createdAt'] as Timestamp?)}'),
                 const SizedBox(height: 16),
@@ -176,6 +192,60 @@ class BookingDetailScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(height: 24),
+                if ((booking['status'] ?? '').toString().toLowerCase() ==
+                    'pending')
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade600,
+                      ),
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('ยกเลิกการจอง'),
+                            content:
+                                const Text('คุณต้องการยกเลิกการจองนี้หรือไม่?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('ไม่ยกเลิก'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('ยืนยันยกเลิก'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true) {
+                          try {
+                            await FirebaseFirestore.instance
+                                .collection('user_bookings')
+                                .doc(bookingId)
+                                .delete();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('ยกเลิกการจองเรียบร้อย')),
+                              );
+                              Navigator.pop(context);
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('ยกเลิกการจองไม่สำเร็จ: $e')),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: const Text('ยกเลิก'),
+                    ),
+                  ),
               ],
             ),
           );

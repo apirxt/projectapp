@@ -1,15 +1,14 @@
-//ส่วนนำเข้าแพ็กเกจ
-import 'dart:async';
 import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:projectapp/screen/account_profile.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'screen/account_profile.dart';
 
-//ส่วนหน้าฟีเจอร์ Support/สิทธิ์ปล่อยเช่า
 class MySupport extends StatefulWidget {
   const MySupport({super.key});
 
@@ -18,75 +17,200 @@ class MySupport extends StatefulWidget {
 }
 
 class _MySupportState extends State<MySupport> {
-  //ส่วนตัวแปรสถานะสิทธิ์ host และเวลาคงเหลือ
-  String?
-      _hostStatus; // สถานะ: none | payment_pending | active | expired | rejected
-  Timestamp? _hostActiveUntil;
-  bool _loadingStatus = false;
-  Timer? _tick;
-  Duration _remaining = Duration.zero;
+  bool _canHost = false;
 
   @override
   void initState() {
     super.initState();
-    _listenHostStatus(); //ส่วนเริ่มฟังสถานะจาก Firestore
+    _refreshClaims();
   }
 
-  //ส่วนฟังสถานะ Host จาก Firestore และตั้ง countdown
-  void _listenHostStatus() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    setState(() => _loadingStatus = true);
-    FirebaseFirestore.instance.collection('users').doc(uid).snapshots().listen(
-        (snap) {
-      final v = snap.data();
+  Future<void> _refreshClaims() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final token = await user.getIdTokenResult(true);
       setState(() {
-        _hostStatus =
-            (v != null ? (v['hostStatus'] as String?) : null) ?? 'none';
-        _hostActiveUntil =
-            v != null ? v['hostActiveUntil'] as Timestamp? : null;
-        _setupCountdown();
-        _loadingStatus = false;
+        _canHost = token.claims?['canHostParking'] == true;
       });
-    }, onError: (_) {
-      setState(() => _loadingStatus = false);
-    });
+    } catch (_) {}
   }
 
-  //ส่วนตั้งตัวจับเวลานับถอยหลังสิทธิ์ปล่อยเช่า
-  void _setupCountdown() {
-    _tick?.cancel();
-    if (_hostStatus == 'active' && _hostActiveUntil != null) {
-      _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-        final now = DateTime.now();
-        final end = _hostActiveUntil!.toDate();
-        final diff = end.difference(now);
-        if (diff.isNegative) {
-          _tick?.cancel();
-          setState(() => _remaining = Duration.zero);
-        } else {
-          setState(() => _remaining = diff);
-        }
-      });
-      //ส่วนรีเฟรช claims เผื่อกรณีสิทธิ์เปลี่ยนแบบเรียลไทม์
-      FirebaseAuth.instance.currentUser?.getIdToken(true);
-    } else {
-      _remaining = Duration.zero;
-    }
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        title: const Text('Support'),
+      ),
+      body: user == null
+          ? const Center(
+              child: Text('กรุณาเข้าสู่ระบบเพื่อใช้งานหน้าช่วยเหลือ'))
+          : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .snapshots(),
+              builder: (context, userSnap) {
+                final userData = userSnap.data?.data();
+                final hostUntil = (userData?['hostActiveUntil']) as Timestamp?;
+                final activeUntil = hostUntil?.toDate();
+                final now = DateTime.now();
+                final bool approved = _canHost ||
+                    (activeUntil != null && activeUntil.isAfter(now));
+
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: ListView(
+                    children: [
+                      _buildProfileHeader(user),
+                      const SizedBox(height: 12),
+                      Card(
+                        color: Colors.black12,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('สิทธิ์ปล่อยเช่าที่จอดรถ',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      approved
+                                          ? (activeUntil != null
+                                              ? 'สถานะ: อนุมัติแล้ว (หมดอายุ: ${_fmtDate(activeUntil)})'
+                                              : 'สถานะ: อนุมัติแล้ว')
+                                          : 'สถานะ: ยังไม่ได้ลงทะเบียน',
+                                    ),
+                                  ),
+                                  if (!approved)
+                                    ElevatedButton(
+                                      onPressed: () => _openRegisterDialog(),
+                                      child: const Text('ลงทะเบียน'),
+                                    )
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                  'หลังส่งคำขอ แอดมินจะตรวจสอบและอนุมัติให้ใช้งาน'),
+                              if (!approved)
+                                StreamBuilder<
+                                    QuerySnapshot<Map<String, dynamic>>>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('host_rights_requests')
+                                      .where('userId', isEqualTo: user.uid)
+                                      .orderBy('createdAt', descending: true)
+                                      .limit(1)
+                                      .snapshots(),
+                                  builder: (context, rs) {
+                                    final waiting =
+                                        (rs.data?.docs.isNotEmpty ?? false);
+                                    return waiting
+                                        ? Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 6.0),
+                                            child: Row(
+                                              children: const [
+                                                Icon(Icons.hourglass_top,
+                                                    size: 16,
+                                                    color: Colors.orange),
+                                                SizedBox(width: 6),
+                                                Text('สถานะคำขอ: กำลังตรวจสอบ'),
+                                              ],
+                                            ),
+                                          )
+                                        : const SizedBox.shrink();
+                                  },
+                                )
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('ติดต่อเรา',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      _contactTile(
+                        icon: Icons.email,
+                        label: 'support@projectapp.com',
+                        onTap: () =>
+                            _launch(Uri.parse('mailto:support@projectapp.com')),
+                      ),
+                      _contactTile(
+                        icon: Icons.phone,
+                        label: '+66 123 456 789',
+                        onTap: () => _launch(Uri.parse('tel:+66123456789')),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+    );
   }
 
-  // ฟอร์มลงทะเบียนใหม่: กรอกชื่อ-นามสกุล, เบอร์โทร และแนบรูปสลิป
-  Future<void> _openRegistrationDialog() async {
+  Widget _buildProfileHeader(User user) {
+    final email = user.email ?? '-';
+    final displayName =
+        user.displayName ?? (email.isNotEmpty ? email.split('@').first : '-');
+    return Card(
+      color: Colors.black12,
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.person)),
+        title: Text(displayName),
+        subtitle: Text(email),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AccountProfileScreen()),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _contactTile(
+      {required IconData icon,
+      required String label,
+      required VoidCallback onTap}) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _launch(Uri uri) async {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  String _fmtDate(DateTime d) {
+    final dt = d.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(dt.day)}/${two(dt.month)}/${dt.year}';
+  }
+
+  Future<void> _openRegisterDialog() async {
     final nameCtl = TextEditingController();
     final phoneCtl = TextEditingController();
-    String? slipUrl;
+    String? imageUrl;
     bool busy = false;
 
-    bool valid() {
+    bool isValid() {
       final name = nameCtl.text.trim();
       final phone = phoneCtl.text.trim();
-      final isDigits = RegExp(r'^\d{9,10}$').hasMatch(phone);
-      return name.isNotEmpty && isDigits && slipUrl != null && !busy;
+      final validPhone = RegExp(r'^\d{9,10}$').hasMatch(phone);
+      return name.isNotEmpty && validPhone && imageUrl != null && !busy;
     }
 
     if (!mounted) return;
@@ -98,7 +222,7 @@ class _MySupportState extends State<MySupport> {
           Future<void> pickAndUpload() async {
             try {
               setD(() => busy = true);
-              final picker = ImagePicker();
+              final ImagePicker picker = ImagePicker();
               final XFile? img =
                   await picker.pickImage(source: ImageSource.gallery);
               if (img == null) {
@@ -108,26 +232,21 @@ class _MySupportState extends State<MySupport> {
               final uid = FirebaseAuth.instance.currentUser?.uid;
               if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
               final path =
-                  'registration_slips/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
+                  'host_rights/$uid/${DateTime.now().millisecondsSinceEpoch}_${img.name}';
               final ref = FirebaseStorage.instance.ref(path);
-              final meta = SettableMetadata(customMetadata: {'ownerUid': uid});
-              final task = await ref.putFile(File(img.path), meta);
+              final task = await ref.putFile(
+                File(img.path),
+                SettableMetadata(customMetadata: {'ownerUid': uid}),
+              );
               final url = await task.ref.getDownloadURL();
               setD(() {
-                slipUrl = url;
+                imageUrl = url;
                 busy = false;
               });
-            } on FirebaseException catch (e) {
-              setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: ${e.code}')),
-                );
-              }
             } catch (e) {
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
                   SnackBar(content: Text('อัปโหลดรูปไม่สำเร็จ: $e')),
                 );
               }
@@ -137,35 +256,34 @@ class _MySupportState extends State<MySupport> {
           Future<void> submit() async {
             try {
               setD(() => busy = true);
-              final callable = FirebaseFunctions.instance
-                  .httpsCallable('submitHostRegistration');
-              await callable.call({
-                'fullName': nameCtl.text.trim(),
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) throw Exception('กรุณาเข้าสู่ระบบ');
+              await FirebaseFirestore.instance
+                  .collection('host_rights_requests')
+                  .add({
+                'userId': uid,
+                'name': nameCtl.text.trim(),
                 'phone': phoneCtl.text.trim(),
-                'slipUrl': slipUrl,
+                'imageUrl': imageUrl,
+                'createdAt': FieldValue.serverTimestamp(),
               });
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('ส่งคำขอเรียบร้อย รอแอดมินตรวจสอบ')),
-              );
-            } on FirebaseFunctionsException catch (e) {
-              setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('ส่งคำขอไม่สำเร็จ: ${e.code}')),
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('ส่งคำขอลงทะเบียนเรียบร้อย')),
                 );
               }
             } catch (e) {
               setD(() => busy = false);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
                   SnackBar(content: Text('ส่งคำขอไม่สำเร็จ: $e')),
                 );
               }
             }
           }
+
+          const String appAccountNo = '054-8-52216-1';
 
           return AlertDialog(
             title: const Text('ลงทะเบียนสิทธิ์ปล่อยเช่า'),
@@ -182,24 +300,57 @@ class _MySupportState extends State<MySupport> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: phoneCtl,
+                    keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
                         labelText: 'เบอร์โทร (9–10 หลัก)'),
-                    keyboardType: TextInputType.phone,
                     onChanged: (_) => setD(() {}),
                   ),
                   const SizedBox(height: 12),
-                  if (slipUrl != null)
+                  // ส่วนแสดงบัญชีของทางแอป (ตำแหน่งเดียวกับหน้าต่างจอง)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text('ธนาคาร : กสิกร'),
+                            Text('ชื่อบัญชี : อภิรัตน์ โอชา'),
+                            Text('เลขบัญชี : 054-8-52216-1',
+                                style: TextStyle(fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                await Clipboard.setData(
+                                    const ClipboardData(text: appAccountNo));
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('คัดลอกเลขบัญชีแล้ว')),
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: const Text('คัดลอก'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (imageUrl != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(slipUrl!,
-                          height: 140, fit: BoxFit.cover),
+                      child: Image.network(imageUrl!,
+                          height: 120, fit: BoxFit.cover),
                     ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   ElevatedButton.icon(
                     onPressed: busy ? null : pickAndUpload,
                     icon: const Icon(Icons.image),
-                    label:
-                        Text(slipUrl == null ? 'แนบรูปสลิป' : 'เปลี่ยนรูปสลิป'),
+                    label: Text(
+                        imageUrl == null ? 'แนบรูปสลิป' : 'เปลี่ยนรูปสลิป'),
                   ),
                 ],
               ),
@@ -210,7 +361,7 @@ class _MySupportState extends State<MySupport> {
                 child: const Text('ยกเลิก'),
               ),
               ElevatedButton(
-                onPressed: valid() ? submit : null,
+                onPressed: isValid() ? submit : null,
                 child: busy
                     ? const SizedBox(
                         width: 18,
@@ -222,139 +373,6 @@ class _MySupportState extends State<MySupport> {
           );
         });
       },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: const Text('Support'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          //ส่วนบัตรสรุปบัญชีผู้ใช้
-          Card(
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(12),
-              leading: CircleAvatar(
-                radius: 28,
-                backgroundImage:
-                    (user?.photoURL != null && user!.photoURL!.isNotEmpty)
-                        ? NetworkImage(user.photoURL!)
-                        : null,
-                child: (user?.photoURL == null || user!.photoURL!.isEmpty)
-                    ? const Icon(Icons.person, size: 28)
-                    : null,
-              ),
-              title: Text(user?.displayName ?? 'ไม่ระบุชื่อผู้ใช้'),
-              subtitle: Text(user?.email ?? 'ไม่ระบุอีเมล'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const AccountProfileScreen()),
-                );
-                if (mounted) setState(() {}); //ส่วนรีเฟรชหลังกลับมา
-              },
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          //ส่วนสิทธิ์ปล่อยเช่า (Host Permission)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('สิทธิ์ปล่อยเช่าที่จอดรถ',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _loadingStatus
-                              ? 'กำลังโหลดสถานะ…'
-                              : () {
-                                  switch (_hostStatus) {
-                                    case 'active':
-                                      final mm = _remaining.inMinutes
-                                          .remainder(60)
-                                          .toString()
-                                          .padLeft(2, '0');
-                                      final ss = _remaining.inSeconds
-                                          .remainder(60)
-                                          .toString()
-                                          .padLeft(2, '0');
-                                      return 'สถานะ: ได้รับสิทธิ์แล้ว (เหลือเวลา $mm:$ss นาที)';
-                                    case 'payment_pending':
-                                      return 'สถานะ: รอชำระเงิน';
-                                    case 'rejected':
-                                      return 'สถานะ: ถูกปฏิเสธ (สามารถส่งคำขอใหม่)';
-                                    default:
-                                      return 'สถานะ: ยังไม่ได้ลงทะเบียน';
-                                  }
-                                }(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (!_loadingStatus &&
-                          (_hostStatus == null ||
-                              _hostStatus == 'none' ||
-                              _hostStatus == 'expired' ||
-                              _hostStatus == 'rejected'))
-                        ElevatedButton(
-                          onPressed: _openRegistrationDialog,
-                          child: const Text('ลงทะเบียน'),
-                        ),
-                      if (!_loadingStatus && _hostStatus == 'requested')
-                        const Chip(label: Text('รอตรวจสอบ')),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text('หลังส่งคำขอ แอดมินจะตรวจสอบและอนุมัติให้ใช้งาน'),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          //ส่วนติดต่อเรา
-          const Text(
-            'ติดต่อเรา',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'หากคุณมีคำถามหรือปัญหาเกี่ยวกับการใช้งานแอปพลิเคชัน สามารถติดต่อเราได้ที่:',
-            style: TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: const [
-              Icon(Icons.email, color: Colors.blue),
-              SizedBox(width: 8),
-              Text('support@projectapp.com', style: TextStyle(fontSize: 16)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: const [
-              Icon(Icons.phone, color: Colors.green),
-              SizedBox(width: 8),
-              Text('+66 123 456 789', style: TextStyle(fontSize: 16)),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
