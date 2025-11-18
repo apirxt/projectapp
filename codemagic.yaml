@@ -1,11 +1,14 @@
 workflows:
-  android-release:
-    name: Build Android Release
+  android-apk:
+    name: Build APK with Auto Signing
     environment:
       flutter: stable
-      xcode: latest
     scripts:
       - flutter pub get
       - flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+    publishing:
+      android:
+        app_bundle: false
+        apk: true
