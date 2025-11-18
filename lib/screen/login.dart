@@ -124,8 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                         .signInWithEmailAndPassword(
                                             email: profile.email!,
                                             password: profile.password!);
-                  //ส่วนรีเฟรชโทเค็นเพื่ออัปเดตสิทธิ์ (claims)
-                  await FirebaseAuth.instance.currentUser
+                                    //ส่วนรีเฟรชโทเค็นเพื่ออัปเดตสิทธิ์ (claims)
+                                    await FirebaseAuth.instance.currentUser
                                         ?.getIdToken(true);
                                     if (!context.mounted) return;
                                     formKey.currentState!.reset();
