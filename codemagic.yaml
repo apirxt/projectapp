@@ -1,0 +1,11 @@
+workflows:
+  android-release:
+    name: Build Android Release
+    environment:
+      flutter: stable
+      xcode: latest
+    scripts:
+      - flutter pub get
+      - flutter build apk --release
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
