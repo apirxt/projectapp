@@ -8,7 +8,3 @@ workflows:
       - flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
-    publishing:
-      android:
-        app_bundle: false
-        apk: true
