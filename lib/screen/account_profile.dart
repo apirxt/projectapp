@@ -24,6 +24,31 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
 
   User? get user => FirebaseAuth.instance.currentUser;
 
+  // แปลงหมายเลขโทรศัพท์ที่ผู้ใช้กรอกให้เป็นรูปแบบ E.164 (+66...) สำหรับไทย
+  // ตัวอย่างรับ: 0812345678 -> +66812345678, +66812345678 -> คงเดิม
+  String _normalizeToE164(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    // เอาเฉพาะตัวเลขและ +
+    final cleaned = trimmed.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (cleaned.startsWith('+')) return cleaned; // ผู้ใช้กรอกแบบสากลแล้ว
+    // สมมติเป็นเบอร์ไทย (เริ่มด้วย 0 และรวมรหัสพื้นที่ไว้)
+    if (RegExp(r'^0[0-9]{8,9}$').hasMatch(cleaned)) {
+      return '+66' + cleaned.substring(1);
+    }
+    // กรณีอื่น: ถ้าเป็น 9-10 หลักไม่ขึ้นต้นด้วย 0 ให้เดาว่าเป็นหมายเลข local ไทยที่ขาด 0
+    if (RegExp(r'^[0-9]{9,10}$').hasMatch(cleaned)) {
+      // ไม่แน่ใจประเทศ ผู้ใช้ควรกรอก +66 เอง -> คืน cleaned เพื่อให้ Firebase ตรวจแล้วแจ้ง error
+      return cleaned;
+    }
+    return cleaned; // คืนค่าเดิม (อาจ error ภายหลัง)
+  }
+
+  bool _looksValidE164(String e164) {
+    // กำหนดเป็น + ตามด้วย 8-15 ตัวเลข ซึ่งครอบคลุม ITU-T E.164
+    return RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(e164);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -152,13 +177,19 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           .ref()
           .child('profile_photos/${user!.uid}.jpg');
       // ignore: avoid_print
-      print('UPLOAD profile_photos path=${ref.fullPath} uid=${user!.uid}');
-      final task = await ref.putFile(
-        file,
-        SettableMetadata(customMetadata: {
+      print(
+          'UPLOAD profile_photos path=${ref.fullPath} uid=${user!.uid} size=${await file.length()}');
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg', // ปรับตามจริงหากรองรับ PNG
+        customMetadata: {
           if (user != null) 'ownerUid': user!.uid,
-        }),
+          'pickedAt': DateTime.now().toIso8601String(),
+        },
       );
+      // ignore: avoid_print
+      print(
+          'PUT metadata=${metadata.customMetadata} contentType=${metadata.contentType}');
+      final task = await ref.putFile(file, metadata);
       final url = await task.ref.getDownloadURL();
       await user!.updatePhotoURL(url);
       await user!.reload();
@@ -172,10 +203,11 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
     } on FirebaseException catch (e) {
       // พิมพ์รหัส error เพื่อช่วยวิเคราะห์ (เช่น permission-denied)
       // ignore: avoid_print
-      print('UPLOAD ERROR code=${e.code} message=${e.message}');
+      print(
+          'UPLOAD ERROR code=${e.code} message=${e.message} full=${e.toString()}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('อัปโหลดรูปโปรไฟล์ล้มเหลว: ${e.code}')),
+          SnackBar(content: Text(_friendlyStorageError(e))),
         );
       }
     } catch (e) {
@@ -186,6 +218,19 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _friendlyStorageError(FirebaseException e) {
+    switch (e.code) {
+      case 'unauthorized':
+        return 'อัปโหลดรูปโปรไฟล์ล้มเหลว (unauthorized): ตรวจสอบว่าล็อกอินอยู่และ storage.rules อนุญาต ownerUid=${user?.uid}';
+      case 'cancelled':
+        return 'การอัปโหลดถูกยกเลิก';
+      case 'retry-limit-exceeded':
+        return 'อัปโหลดล้มเหลว: เกินจำนวนครั้งที่ลองใหม่';
+      default:
+        return 'อัปโหลดรูปโปรไฟล์ล้มเหลว: ${e.code}';
     }
   }
 
@@ -304,9 +349,22 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
 
       //ส่วนขั้นตอน 3: อัปเดตหมายเลขโทรศัพท์ (OTP)
       if (wantsPhone) {
+        // ขั้นเตรียมหมายเลข -> E.164
+        final formattedPhone = _normalizeToE164(newPhone);
+        if (!_looksValidE164(formattedPhone)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'รูปแบบหมายเลขโทรศัพท์ไม่ถูกต้อง กรุณากรอกเช่น 0812345678 หรือ +66812345678')),
+            );
+          }
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
         String? verificationId;
         await FirebaseAuth.instance.verifyPhoneNumber(
-          phoneNumber: newPhone,
+          phoneNumber: formattedPhone,
           verificationCompleted: (cred) async {
             try {
               await user!.updatePhoneNumber(cred);
@@ -319,9 +377,27 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             } catch (_) {}
           },
           verificationFailed: (e) {
+            String msg;
+            switch (e.code) {
+              case 'invalid-phone-number':
+                msg =
+                    'หมายเลขไม่ถูกต้อง (กรอกเช่น 0812345678 หรือ +66812345678)';
+                break;
+              case 'too-many-requests':
+                msg = 'ถูกจำกัดการขอรหัสชั่วคราว โปรดลองใหม่ภายหลัง';
+                break;
+              case 'operation-not-allowed':
+                msg = 'ยังไม่ได้เปิดใช้งาน Phone Provider ใน Firebase Console';
+                break;
+              case 'captcha-check-failed':
+                msg = 'การตรวจสอบ reCAPTCHA ล้มเหลว โปรดลองใหม่';
+                break;
+              default:
+                msg = 'ยืนยันหมายเลขล้มเหลว: ${e.message}';
+            }
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('ยืนยันหมายเลขล้มเหลว: ${e.message}')),
+                SnackBar(content: Text(msg)),
               );
             }
           },
@@ -350,8 +426,9 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
             if (ok == true && verificationId != null) {
               try {
                 final cred = PhoneAuthProvider.credential(
-                    verificationId: verificationId!,
-                    smsCode: codeCtl.text.trim());
+                  verificationId: verificationId!,
+                  smsCode: codeCtl.text.trim(),
+                );
                 await user!.updatePhoneNumber(cred);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -360,11 +437,20 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                   );
                 }
               } on FirebaseAuthException catch (e) {
+                String msg;
+                switch (e.code) {
+                  case 'invalid-verification-code':
+                    msg = 'รหัสไม่ถูกต้อง';
+                    break;
+                  case 'session-expired':
+                    msg = 'รหัสหมดอายุ กรุณาขอใหม่';
+                    break;
+                  default:
+                    msg = 'อัปเดตหมายเลขไม่สำเร็จ: ${e.message}';
+                }
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('อัปเดตหมายเลขไม่สำเร็จ: ${e.message}')),
-                  );
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(msg)));
                 }
               }
             }

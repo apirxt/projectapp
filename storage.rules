@@ -123,10 +123,11 @@ service firebase.storage {
       match /profile_photos/{fileName} {
         // อ่านได้เมื่อผู้ใช้ล็อกอิน (ปรับเป็น public ได้หากต้องการ)
         allow read: if isSignedIn();
-        // สร้างไฟล์ใหม่: ต้องแนบ customMetadata.ownerUid ตรงกับผู้ใช้เสมอ
-        allow create: if isSignedIn() && ownerUidFromRequest() == request.auth.uid;
-        // แก้ไข/ลบ: เจ้าของเท่านั้น (รองรับไฟล์เก่าที่ไม่มี metadata)
+        // อนุญาตสร้างเฉพาะไฟล์ที่ชื่อเป็น uid+.jpg ของตัวเอง ลดการพึ่ง customMetadata (กันกรณี metadata ไม่ถูกส่ง)
+        allow create: if isSignedIn() && fileName == (request.auth.uid + '.jpg');
+        // อนุญาตแก้ไข/ลบเฉพาะไฟล์ของตัวเอง (ตรวจด้วยชื่อไฟล์ หรือ metadata หากมี)
         allow update, delete: if isSignedIn() && (
+          fileName == (request.auth.uid + '.jpg') ||
           ownerUidFromResource() == request.auth.uid ||
           ownerUidFromRequest() == request.auth.uid
         );
